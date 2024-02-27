@@ -3,47 +3,36 @@ import numpy as np
 import sys
 
 ### Parameters:
-L, H, B = 1, 1, 1
-eps = 0.1
 gamma_0 = 0.5
-point_num = int(L/eps * 24) # for discrete interface, points per eps section
-
-fluid_marker = 0
-grinding_marker = 1
-
-mesh_size_max = 0.05
-mesh_size_min = 0.1 * eps
+point_num = 64
+mesh_size_ref = 0.025
 
 show_mesh = True
-save_fluid = False
 
 ### Roughness function:
 def sin_rough(x, y):
-   sin_term = np.sin(2*np.pi*x/eps) * np.sin(2*np.pi*y/eps)
+   sin_term = np.sin(2*np.pi*x) * np.sin(2*np.pi*y)
    return np.clip(1 + (1-gamma_0)*sin_term, 0.0, 1.0)
 
 def sin_groove_x(x, y):
-   sin_term = np.sin(2*np.pi*x/eps + np.pi/2.0)
+   sin_term = np.sin(2*np.pi*x + np.pi/2.0)
    return np.clip(1 + (1-gamma_0)*sin_term, 0.0, 1.0)
 
 def sin_groove_y(x, y):
-   sin_term = np.sin(2*np.pi*y/eps + np.pi/2.0)
+   sin_term = np.sin(2*np.pi*y + np.pi/2.0)
    return np.clip(1 + (1-gamma_0)*sin_term, 0.0, 1.0)
 
 
 rough_fn = sin_rough
 
-### Start domain creation
-## Build grid with height of roughness:
-x_coords = np.linspace(0, L, point_num)
-y_coords = np.linspace(0, B, point_num)
-coords = np.array(np.meshgrid(x_coords, y_coords)).T.reshape(-1, 2)
-coords = np.column_stack((coords, eps * rough_fn(coords[:, :1], coords[:, 1:])))
-
-
-## Start gmsh
+### Build cell
 gmsh.initialize()
-gmsh.model.add("Domain")
+gmsh.model.add("ReferenceCell")
+x_coords = np.linspace(0, 1, 64)
+y_coords = np.linspace(0, 1, 64)
+coords = np.array(np.meshgrid(x_coords, y_coords)).T.reshape(-1, 2)
+coords = np.column_stack((coords, rough_fn(coords[:, :1], coords[:, 1:])))
+
 
 ## We will create the terrain surface mesh from input data points:
 ## Helper function to return a node tag given two indices i
@@ -122,44 +111,14 @@ gmsh.model.mesh.reclassifyNodes()
 # them later on:
 gmsh.model.mesh.createGeometry()
 
-# First add wheel domain:
-p1 = gmsh.model.geo.addPoint(*coords[0, :2], H, meshSize=mesh_size_max)
-p2 = gmsh.model.geo.addPoint(*coords[tag(point_num-1, 0) - 1, :2], H, 
-                             meshSize=mesh_size_max)
-p3 = gmsh.model.geo.addPoint(*coords[tag(point_num-1, point_num-1) - 1, :2], 
-                             H, meshSize=mesh_size_max)
-p4 = gmsh.model.geo.addPoint(*coords[tag(0, point_num-1) - 1, :2], 
-                             H, meshSize=mesh_size_max)
-c1 = gmsh.model.geo.addLine(p1, p2)
-c2 = gmsh.model.geo.addLine(p2, p3)
-c3 = gmsh.model.geo.addLine(p3, p4)
-c4 = gmsh.model.geo.addLine(p4, p1)
-c10 = gmsh.model.geo.addLine(p1, 1)
-c11 = gmsh.model.geo.addLine(p2, 2)
-c12 = gmsh.model.geo.addLine(p3, 3)
-c13 = gmsh.model.geo.addLine(p4, 4)
-ll1 = gmsh.model.geo.addCurveLoop([c1, c2, c3, c4])
-s1 = gmsh.model.geo.addPlaneSurface([ll1])
-ll3 = gmsh.model.geo.addCurveLoop([c1, c11, -1, -c10])
-s3 = gmsh.model.geo.addPlaneSurface([ll3])
-ll4 = gmsh.model.geo.addCurveLoop([c2, c12, -2, -c11])
-s4 = gmsh.model.geo.addPlaneSurface([ll4])
-ll5 = gmsh.model.geo.addCurveLoop([c3, c13, 3, -c12])
-s5 = gmsh.model.geo.addPlaneSurface([ll5])
-ll6 = gmsh.model.geo.addCurveLoop([c4, c10, 4, -c13])
-s6 = gmsh.model.geo.addPlaneSurface([ll6])
-sl1 = gmsh.model.geo.addSurfaceLoop([s1, s3, s4, s5, s6, 1])
-v1 = gmsh.model.geo.addVolume([sl1])
-gmsh.model.geo.synchronize() # add the rough interface and this volume together
-
 # # Next add fluid domain:
-p1_s = gmsh.model.geo.addPoint(*coords[0, :2], 0.0, meshSize=mesh_size_min)
+p1_s = gmsh.model.geo.addPoint(*coords[0, :2], 0.0, meshSize=mesh_size_ref)
 p2_s = gmsh.model.geo.addPoint(*coords[tag(point_num-1, 0) - 1, :2], 
-                               0.0, meshSize=mesh_size_min)
+                               0.0, meshSize=mesh_size_ref)
 p3_s = gmsh.model.geo.addPoint(*coords[tag(point_num-1, point_num-1) - 1, :2], 
-                               0.0, meshSize=mesh_size_min)
+                               0.0, meshSize=mesh_size_ref)
 p4_s = gmsh.model.geo.addPoint(*coords[tag(0, point_num-1) - 1, :2], 
-                               0.0, meshSize=mesh_size_min)
+                               0.0, meshSize=mesh_size_ref)
 c1_s = gmsh.model.geo.addLine(p1_s, p2_s)
 c2_s = gmsh.model.geo.addLine(p2_s, p3_s)
 c3_s = gmsh.model.geo.addLine(p3_s, p4_s)
@@ -182,23 +141,27 @@ sl1_s = gmsh.model.geo.addSurfaceLoop([s1_s, s3_s, s4_s, s5_s, s6_s, 1])
 v2 = gmsh.model.geo.addVolume([sl1_s])
 gmsh.model.geo.synchronize()
 
+translation_1 = [1, 0, 0, 0, 
+                0, 1, 0, 1, 
+                0, 0, 1, 0, 
+                0, 0, 0, 1]
+gmsh.model.mesh.setPeriodic(2, [s5_s], [s3_s], translation_1)
 
-gmsh.model.mesh.setSize([(0, 1), (0, 2), (0, 3), (0, 4)], mesh_size_min)
-gmsh.option.setNumber('Mesh.MeshSizeMin', mesh_size_min)
-gmsh.option.setNumber('Mesh.MeshSizeMax', mesh_size_max)
 
-### Mark subdomains
-if save_fluid:
-    gmsh.model.addPhysicalGroup(3, [2], fluid_marker, name="Fluid")
-else:
-    gmsh.model.addPhysicalGroup(3, [1], grinding_marker, name="Wheel")
+translation_2 = [1, 0, 0, 1, 
+                0, 1, 0, 0, 
+                0, 0, 1, 0, 
+                0, 0, 0, 1]
+gmsh.model.mesh.setPeriodic(2, [s4_s], [s6_s], translation_2)
+
+gmsh.model.mesh.setSize([(0, 1), (0, 2), (0, 3), (0, 4)], mesh_size_ref)
+gmsh.option.setNumber('Mesh.MeshSizeMax', mesh_size_ref)
+
+### Mark subdomains for saving
+gmsh.model.addPhysicalGroup(3, [1], 1, name="Dummy")
 
 gmsh.model.mesh.generate(3)
-
-if save_fluid:
-    gmsh.write('MeshCreation/3DMesh/fluid_domain' + str(eps) + '.msh')
-else:
-    gmsh.write('MeshCreation/3DMesh/grind_domain' + str(eps) + '.msh')
+gmsh.write('MeshCreation/3DMesh/ref_cell.msh')
 
 if show_mesh and '-nopopup' not in sys.argv:
    gmsh.fltk.run()

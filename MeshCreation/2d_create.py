@@ -8,7 +8,7 @@ import sys
 L, H = 1, 1
 eps = 0.01
 gamma_0 = 0.5
-point_num = int(L/eps * 23) # for discrete interface, points per eps section
+point_num = int(L/eps * 40) # for discrete interface, points per eps section
 
 fluid_marker = 0
 grinding_marker = 1

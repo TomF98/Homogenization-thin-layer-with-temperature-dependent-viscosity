@@ -137,7 +137,7 @@ M_f = csr_matrix((bv, bj, bi))
 u_fluid, p_fluid = TestFunctions(W_fluid)
 psi_fluid, q_fluid = TrialFunctions(W_fluid)
 
-mu_fn = mu * (theta_cool/theta_f_old)**4
+mu_fn = mu * (theta_cool/theta_f_old)**2
 momentum = inner(mu_fn * grad(u_fluid), grad(psi_fluid)) - inner(div(psi_fluid), p_fluid)
 mass = div(u_fluid)*q_fluid
 

@@ -17,3 +17,7 @@ meshio.write("MeshCreation/2DMesh/fluid_domain" + str(eps) + ".xdmf", triangle_m
 msh=meshio.read("MeshCreation/2DMesh/grind_domain" + str(eps) + ".msh")
 triangle_mesh = create_mesh(msh, "triangle", True)
 meshio.write("MeshCreation/2DMesh/grind_domain" + str(eps) + ".xdmf", triangle_mesh)
+
+msh=meshio.read("MeshCreation/2DMesh/ref_cell.msh")
+triangle_mesh = create_mesh(msh, "triangle", True)
+meshio.write("MeshCreation/2DMesh/ref_cell.xdmf", triangle_mesh)
