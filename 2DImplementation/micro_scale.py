@@ -8,7 +8,7 @@ import time
 from petsc4py import PETSc
 
 ### Problem parameters
-eps = 0.01
+eps = 0.05
 
 L, H = 1, 1
 
@@ -23,7 +23,7 @@ kappa_f = 10.0
 c_f = 2.0
 rho_f = 2.0 
 
-mu = 1.0
+mu_scale = 1.0
 u_bc_speed = 1.0
 
 theta_cool = 10.0 # boundary condition temperatur
@@ -34,7 +34,7 @@ interface_marker = 2
 heat_production = 100.0
 
 ## Time 
-T_int = [0, 3]
+T_int = [0, 5]
 dt = 0.05
 t_n = T_int[0]
 
@@ -61,8 +61,8 @@ class Interface(SubDomain):
         x0_b = near(x[0], L) or near(x[0], 0)
         return on_boundary and not x0_b and not x1_b 
 
-Interface().mark(facet_markers_fluid, 2)
-Interface().mark(facet_markers_solid, 2)
+Interface().mark(facet_markers_fluid, interface_marker)
+Interface().mark(facet_markers_solid, interface_marker)
 
 print("Size of domains")
 print("Wheel dofs", dofs_g)
@@ -75,6 +75,8 @@ theta_g_old.assign(Constant(theta_cool))
 
 dx_g = Measure("dx", wheel_mesh)
 ds_g = Measure("ds", wheel_mesh, subdomain_data=facet_markers_solid)
+
+print("interface length", assemble(1 * ds_g(interface_marker)))
 
 u_g = TrialFunction(V_g)
 phi_g = TestFunction(V_g)
@@ -137,8 +139,8 @@ M_f = csr_matrix((bv, bj, bi))
 u_fluid, p_fluid = TestFunctions(W_fluid)
 psi_fluid, q_fluid = TrialFunctions(W_fluid)
 
-mu_fn = mu * (theta_cool/theta_f_old)**2
-momentum = inner(mu_fn * grad(u_fluid), grad(psi_fluid)) - inner(div(psi_fluid), p_fluid)
+mu_fn = mu_scale * (theta_cool/theta_f_old)**2
+momentum = inner(mu_fn * grad(u_fluid), grad(psi_fluid)) + inner(div(psi_fluid), p_fluid)
 mass = div(u_fluid)*q_fluid
 
 rhs_fluid = inner(Constant(0.0), q_fluid) 
@@ -188,9 +190,6 @@ for idx_f in connected_vertex:
 
     coupling_dofs, mass_values = mass_matrix_fluid.getrow(dof_f)
     coupling_dofs = coupling_dofs.astype(np.int32)
-    # check if we are at the left boundary:
-    dirichlet_point = fluid_mesh.coordinates()[idx_f][0] <= DOLFIN_EPS
-
     idx_g = v_to_dof_g[mapping_f_to_g[idx_f]]
 
     ## Set coupling in matrix:
@@ -198,13 +197,12 @@ for idx_f in connected_vertex:
     for dof_f_k in coupling_dofs:
         k = dof_to_v_f[dof_f_k]
         if distance_f_to_g[k] < distance_tol:
-            ## fluid to wheel
-            idx_g_k = v_to_dof_g[mapping_f_to_g[k]]
-            # of diagonal blocks (outer blocks are symmetric)
+            # check if we are at the left boundary:
+            dirichlet_point = fluid_mesh.coordinates()[k][0] < DOLFIN_EPS
             if not dirichlet_point:
-                M_coupling[dofs_g + dof_f_k, idx_g_k] -= alpha * mass_values[counter]
+                M_coupling[dofs_g + dof_f_k, idx_g] -= alpha * mass_values[counter]
             
-            M_coupling[idx_g_k, dofs_g + dof_f_k] -= alpha * mass_values[counter]
+            M_coupling[idx_g, dofs_g + dof_f_k] -= alpha * mass_values[counter]
 
         counter += 1
 
@@ -251,7 +249,8 @@ while t_n < T_int[1]:
     ## Fluid problem
     print("Start solving stokes")
     start_time = time.time()
-    solve(A_stokes==L_stokes, w_stokes, [stokes_bc])
+    solve(A_stokes==L_stokes, w_stokes, [stokes_bc], 
+          solver_parameters={'linear_solver' : 'mumps'})
     print("Solving is done, took", time.time()- start_time)
     ## Temperatur problem
     # Update convection part:

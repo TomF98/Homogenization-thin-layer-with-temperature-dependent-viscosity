@@ -11,7 +11,21 @@ with XDMFFile("MeshCreation/2DMesh/ref_cell.xdmf") as infile:
    infile.read(domain_mesh)
 
 dx = Measure("dx", domain_mesh)
+ds = Measure("ds", domain_mesh)
 
+def bottom_boundary(x, on_boundary):
+    return on_boundary and x[1] < DOLFIN_EPS
+
+def top_boundary(x, on_boundary):
+    at_1 = x[1] > 1 - DOLFIN_EPS 
+    inside = x[1] > DOLFIN_EPS and (x[0] > DOLFIN_EPS and x[0] < 1 - DOLFIN_EPS)
+    return on_boundary and (at_1 or inside) 
+
+def both_boundaries(x, on_boundary):
+    return bottom_boundary(x, on_boundary) or top_boundary(x, on_boundary)
+
+print("cell volume:", assemble(1 * dx))
+print("interface length (not always correct):", assemble(1 * ds)-3)
 #####################
 ### Functionspace stuff
 class PeriodicBC(SubDomain):
@@ -79,8 +93,7 @@ L_stokes = rhs_fluid * dx
 
 A_stokes += 1.e-7*p*q*dx # trick to zero average from fenics forum
 
-noslip_bc = DirichletBC(W_stokes.sub(0), Constant((0, 0)), 
-                        "on_boundary and x[0] > DOLFIN_EPS and x[0] < 1 - DOLFIN_EPS")
+noslip_bc = DirichletBC(W_stokes.sub(0), Constant((0, 0)), both_boundaries)
 
 w = Function(W_stokes)
 solve(A_stokes==L_stokes, w, [noslip_bc])#, solver_parameters={'linear_solver' : 'mumps'})
@@ -97,10 +110,8 @@ filev << u0
 
 ##########################
 ### Flow given by boundary movement
-noslip_bc = DirichletBC(W_stokes.sub(0), Constant((0, 0)), 
-    "on_boundary and x[0] > DOLFIN_EPS and x[0] < 1 - DOLFIN_EPS and x[1] > DOLFIN_EPS")
-speed_bc  = DirichletBC(W_stokes.sub(0), Constant((1, 0)), 
-    "on_boundary and x[0] > DOLFIN_EPS and x[0] < 1 - DOLFIN_EPS and x[1] < DOLFIN_EPS")
+noslip_bc = DirichletBC(W_stokes.sub(0), Constant((0, 0)), top_boundary)
+speed_bc  = DirichletBC(W_stokes.sub(0), Constant((1, 0)), bottom_boundary)
 
 w = Function(W_stokes)
 solve(A_stokes==L_stokes, w, [noslip_bc, speed_bc])

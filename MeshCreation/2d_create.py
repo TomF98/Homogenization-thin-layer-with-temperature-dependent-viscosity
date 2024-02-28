@@ -13,10 +13,10 @@ point_num = int(L/eps * 40) # for discrete interface, points per eps section
 fluid_marker = 0
 grinding_marker = 1
 
-mesh_size_max = 0.05
-mesh_size_min = 0.1 * eps
+mesh_size_max = 0.025
+mesh_size_min = 0.05 * eps
 show_mesh = False
-save_fluid = False
+save_fluid = True
 
 ### Roughness function:
 def sin_rough(x):
