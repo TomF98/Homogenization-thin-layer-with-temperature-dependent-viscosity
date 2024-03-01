@@ -102,10 +102,19 @@ M_g = csr_matrix((bv, bj, bi))
 V_f = FunctionSpace(fluid_mesh, "CG", 1)
 P_fluid = FunctionSpace(fluid_mesh, "CG", 1)
 
+fluid_mesh_marker = MeshFunction("size_t", fluid_mesh, 0)
+
+class RightBoundary(SubDomain):
+    def inside(self, x, on_boundary):
+        return x[0] > L - DOLFIN_EPS
+
+RightBoundary().mark(fluid_mesh_marker, 1)
+
 theta_f_old = Function(V_f)
 theta_f_old.assign(Constant(theta_cool))
 
 dx_f = Measure("dx", fluid_mesh)
+ds_f = Measure("ds", fluid_mesh, subdomain_data=fluid_mesh_marker)
 
 p_stokes = Function(P_fluid)
 
@@ -121,8 +130,21 @@ a_f *= dx_f
 a_f += alpha * inner(u_f, phi_f) * dx_f
 
 f_f = cell_size*c_f*rho_f/dt * inner(theta_f_old, phi_f) * dx_f
+
 bc = DirichletBC(V_f, Constant(theta_cool), 
                  "on_boundary && x[0] < DOLFIN_EPS")
+
+## SUPG: (here left side constant in time -> ok to only compute once)
+res_temp = c_f*rho_f*(cell_size*u_f - cell_size*theta_f_old 
+                      + dt*inner(u_bar, grad(u_f)[0])) \
+       - dt*kappa_f*div(grad(u_f))
+
+h = 1.0/res
+Pe = h * abs(u_bar) / (2 * kappa_f)
+tau_temp = (math.cosh(Pe)/math.sinh(Pe) - 1/Pe) * h/(2.0*abs(u_bar)) 
+supg_term = tau_temp*inner(u_bar, grad(phi_f)[0])*res_temp*dx_f
+f_f += rhs(supg_term)
+a_f += lhs(supg_term)
 
 A_f = PETScMatrix()
 assemble(a_f, tensor=A_f)
@@ -139,10 +161,25 @@ q_fluid = TrialFunction(P_fluid)
 mu_fn = mu_scale * (theta_cool/theta_f_old)**2
 a_fluid_flow = inner(K*grad(p_fluid)[0], q_fluid)
 
-rhs_fluid_flow = inner(mu_fn*(u_bar - psi_eff), q_fluid) 
+# SUPG
+p_e = -h/2.0 * grad(q_fluid)[0]
+a_fluid_flow += inner(K*grad(p_fluid)[0], p_e)
 
-A_stokes = a_fluid_flow * dx_f
-L_stokes = rhs_fluid_flow * dx_f
+rhs_fluid_flow = inner(mu_fn*(u_bar - psi_eff), q_fluid + p_e) 
+
+A_stokes = a_fluid_flow * dx_f - inner(K*p_fluid, q_fluid) * ds_f(1)
+L_stokes = rhs_fluid_flow * dx_f + inner(mu_fn*(u_bar - psi_eff), h * q_fluid) * ds_f(1)
+
+helper_bc = DirichletBC(P_fluid, Constant(0.0), "on_boundary and x[0] < DOLFIN_EPS")
+
+# A = assemble(A_stokes)
+# L = assemble(L_stokes)
+# helper_bc.apply(A, L)
+# print(A.array())
+
+# print(L.get_local())
+
+# exit()
 
 #%%
 ### Build matrix for complete system and construct coupling
@@ -170,7 +207,7 @@ for idx_f in connected_vertex:
 
     coupling_dofs, mass_values = mass_matrix_fluid.getrow(dof_f)
     coupling_dofs = coupling_dofs.astype(np.int32)
-    print(coupling_dofs, mass_values)
+    #print(coupling_dofs, mass_values)
     # check if we are at the left boundary:
     idx_g = v_to_dof_g[mapping_f_to_g[idx_f]]
     
@@ -230,7 +267,10 @@ while t_n < T_int[1]:
     ## Fluid problem
     print("Start solving stokes")
     start_time = time.time()
-    solve(A_stokes==L_stokes, p_stokes)
+    solve(A_stokes==L_stokes, p_stokes, [helper_bc])
+    p_stokes.vector().set_local(
+        p_stokes.vector().get_local() - assemble(p_stokes * dx_f) / L
+    )
     print("Solving is done, took", time.time()- start_time)
     
     ## Temperatur problem

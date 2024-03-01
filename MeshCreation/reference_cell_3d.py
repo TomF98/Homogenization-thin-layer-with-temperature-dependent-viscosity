@@ -23,13 +23,13 @@ def sin_groove_y(x, y):
    return np.clip(1 + (1-gamma_0)*sin_term, 0.0, 1.0)
 
 
-rough_fn = sin_rough
+rough_fn = sin_groove_x
 
 ### Build cell
 gmsh.initialize()
 gmsh.model.add("ReferenceCell")
-x_coords = np.linspace(0, 1, 64)
-y_coords = np.linspace(0, 1, 64)
+x_coords = np.linspace(0, 1, point_num)
+y_coords = np.linspace(0, 1, point_num)
 coords = np.array(np.meshgrid(x_coords, y_coords)).T.reshape(-1, 2)
 coords = np.column_stack((coords, rough_fn(coords[:, :1], coords[:, 1:])))
 

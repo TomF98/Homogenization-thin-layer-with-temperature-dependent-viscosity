@@ -6,7 +6,7 @@ import sys
 L, H, B = 1, 1, 1
 eps = 0.1
 gamma_0 = 0.5
-point_num = int(L/eps * 24) # for discrete interface, points per eps section
+point_num = int(L/eps * 32) # for discrete interface, points per eps section
 
 fluid_marker = 0
 grinding_marker = 1
@@ -14,7 +14,7 @@ grinding_marker = 1
 mesh_size_max = 0.05
 mesh_size_min = 0.1 * eps
 
-show_mesh = True
+show_mesh = False
 save_fluid = False
 
 ### Roughness function:
@@ -31,7 +31,7 @@ def sin_groove_y(x, y):
    return np.clip(1 + (1-gamma_0)*sin_term, 0.0, 1.0)
 
 
-rough_fn = sin_rough
+rough_fn = sin_groove_x
 
 ### Start domain creation
 ## Build grid with height of roughness:

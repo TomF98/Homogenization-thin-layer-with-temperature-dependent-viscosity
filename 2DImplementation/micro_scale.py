@@ -8,7 +8,9 @@ import time
 from petsc4py import PETSc
 
 ### Problem parameters
-eps = 0.05
+eps = 0.1
+
+name = "test1"
 
 L, H = 1, 1
 
@@ -124,6 +126,18 @@ a_f *= dx_f
 a_f += alpha * inner(u_f, phi_f) * ds_f(interface_marker)
 
 f_f = 1/eps * c_f*rho_f/dt * inner(theta_f_old, phi_f) * dx_f
+
+## SUPG:
+res = c_f*rho_f*(u_f - theta_f_old + dt*inner(v_stokes, grad(u_f))) \
+       - dt*kappa_f*div(grad(u_f))
+
+vnorm = sqrt(inner(v_stokes, v_stokes))
+h = CellDiameter(fluid_mesh)
+tau = 10*h/(2.0*vnorm) 
+supg_term = tau*inner(v_stokes, grad(phi_f))*res*dx_f
+f_f += rhs(supg_term)
+a_f += lhs(supg_term)
+
 bc = DirichletBC(V_f, Constant(theta_cool), 
                  "on_boundary && x[0] <= DOLFIN_EPS")
 
@@ -156,7 +170,7 @@ class FlowBC(UserExpression):
         values[1] = 0
         if x[1] < DOLFIN_EPS:
             values[0] = u_bc_speed
-        elif x[0] < DOLFIN_EPS or x[0] > L - DOLFIN_EPS:
+        elif (x[0] < DOLFIN_EPS or x[0] > L - DOLFIN_EPS) and x[1] <= eps + DOLFIN_EPS:
             values[0] = u_bc_speed * (1 - x[1]/eps)
         else:
             values[0] = 0
@@ -229,10 +243,10 @@ solver = PETSc.KSP().create()
 solver.setType(PETSc.KSP.Type.PREONLY) #PREONLY, GMRES
 solver.getPC().setType(PETSc.PC.Type.LU)
 
-file_g     = File("Results/2DResults/Micro/Eps" + str(eps) + "/theta_g.pvd")
-file_f     = File("Results/2DResults/Micro/Eps" + str(eps) + "/theta_f.pvd")
-file_flow  = File("Results/2DResults/Micro/Eps" + str(eps) + "/fluid_f.pvd")
-file_press = File("Results/2DResults/Micro/Eps" + str(eps) + "/pressure_f.pvd")
+file_g     = File("Results/2DResults/Micro/" + name + "_Eps" + str(eps) + "/theta_g.pvd")
+file_f     = File("Results/2DResults/Micro/" + name + "_Eps" + str(eps) + "/theta_f.pvd")
+file_flow  = File("Results/2DResults/Micro/" + name + "_Eps" + str(eps) + "/fluid_f.pvd")
+file_press = File("Results/2DResults/Micro/" + name + "_Eps" + str(eps) + "/pressure_f.pvd")
 
 file_g << (theta_g_old, t_n)
 file_f << (theta_f_old, t_n)
