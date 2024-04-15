@@ -7,33 +7,44 @@ from scipy.spatial import cKDTree
 import time 
 from petsc4py import PETSc
 
+### Effective Parameters (depend on geometry)
+cond_scale_x = 0.64
+cond_scale_y = 0.64
+
+u_bc_eff_x = 0.306
+u_bc_eff_y = 0.0 
+
+K_x = 0.017  
+K_y = 0.017
+
+len_gamma = 1.31   
+cell_size = 0.84
 ### Problem parameters
-eps = 0.1
-
-name = "test2"
-
-L, H = 1, 1
-
-distance_tol = 1.e-5 # some distance to map the different meshes (smaller H)
+L, H, B = 1, 1, 1
+res = 16
+distance_tol = 1.e-5 # some distance to map the different meshes 
+                     # (has to be smaller than mesh size)
 ## Wheel (g = grinding)
 kappa_g = 0.05
 c_g = 2.0
 rho_g = 2.0
 
 ## Fluid 
-kappa_f = 10.0
+kappa_f = 10.0 * Constant((cond_scale_x, cond_scale_y))
 c_f = 2.0
 rho_f = 2.0 
 
 mu_scale = 1.0
 u_bc_speed = 1.0
 
+psi_eff = u_bc_speed
+
 theta_cool = 10.0 # boundary condition temperatur
 
 ## Interface interaction
-alpha = 5.0
+alpha = 5.0 * len_gamma
+heat_production = 100.0 * len_gamma
 interface_marker = 2
-heat_production = 100.0
 
 ## Time 
 T_int = [0, 5]
@@ -42,33 +53,28 @@ t_n = T_int[0]
 
 #%%
 ### Mesh loading
-fluid_mesh = Mesh()
-with XDMFFile("MeshCreation/2DMesh/fluid_domain" + str(eps) + ".xdmf") as infile:
-   infile.read(fluid_mesh)
+fluid_mesh = RectangleMesh(Point(0, 0), Point(L, B), res, res)
 
 dofs_f = len(fluid_mesh.coordinates())
 
-wheel_mesh = Mesh()
-with XDMFFile("MeshCreation/2DMesh/grind_domain" + str(eps) + ".xdmf") as infile:
-   infile.read(wheel_mesh)
+wheel_mesh = BoxMesh(Point(0, 0, 0), Point(L, B, H), res, res, res)
 
 dofs_g = len(wheel_mesh.coordinates())
 
-facet_markers_fluid = MeshFunction("size_t", fluid_mesh, 1)
 facet_markers_solid = MeshFunction("size_t", wheel_mesh, 1)
 ## Fluid and solid interface
 class Interface(SubDomain):
     def inside(self, x, on_boundary):
-        x1_b = near(x[1], H) or near(x[1], 0)
-        x0_b = near(x[0], L) or near(x[0], 0)
-        return on_boundary and not x0_b and not x1_b 
+        x1_b = near(x[2], 0)
+        return on_boundary and x1_b 
 
-Interface().mark(facet_markers_fluid, interface_marker)
 Interface().mark(facet_markers_solid, interface_marker)
 
 print("Size of domains")
 print("Wheel dofs", dofs_g)
 print("Fluid dofs", dofs_f)
+
+exit()
 #%%
 ### Grinding wheel Problem:
 V_g = FunctionSpace(wheel_mesh, "CG", 1)
@@ -78,7 +84,6 @@ theta_g_old.assign(Constant(theta_cool))
 dx_g = Measure("dx", wheel_mesh)
 ds_g = Measure("ds", wheel_mesh, subdomain_data=facet_markers_solid)
 
-print("interface length", assemble(1 * ds_g(interface_marker)))
 
 u_g = TrialFunction(V_g)
 phi_g = TestFunction(V_g)
@@ -92,54 +97,60 @@ a_g += alpha * inner(u_g, phi_g) * ds_g(interface_marker)
 f_g = inner(Constant(heat_production), phi_g) * ds_g(interface_marker)
 f_g += c_g * rho_g/dt * inner(theta_g_old, phi_g) * dx_g
 
+
 A_g = PETScMatrix()
 assemble(a_g, tensor=A_g)
 bi, bj, bv = A_g.mat().getValuesCSR()
 M_g = csr_matrix((bv, bj, bi))
 
 #%%
-### Fluid Problem:
+### Fluid Problem 
 V_f = FunctionSpace(fluid_mesh, "CG", 1)
+P_fluid = FunctionSpace(fluid_mesh, "CG", 1)
 
-V_fluid = VectorElement("CG", fluid_mesh.ufl_cell(), 2)
-P_fluid = FiniteElement("CG", fluid_mesh.ufl_cell(), 1)
-W_fluid_elem = MixedElement([V_fluid, P_fluid])
-W_fluid = FunctionSpace(fluid_mesh, W_fluid_elem) 
+fluid_mesh_marker = MeshFunction("size_t", fluid_mesh, 0)
+
+class RightBoundary(SubDomain):
+    def inside(self, x, on_boundary):
+        return x[0] > L - DOLFIN_EPS
+
+RightBoundary().mark(fluid_mesh_marker, 1)
 
 theta_f_old = Function(V_f)
 theta_f_old.assign(Constant(theta_cool))
 
 dx_f = Measure("dx", fluid_mesh)
-ds_f = Measure("ds", fluid_mesh, subdomain_data=facet_markers_fluid)
+ds_f = Measure("ds", fluid_mesh, subdomain_data=fluid_mesh_marker)
 
-w_stokes = Function(W_fluid)
-v_stokes, p_stokes = split(w_stokes)
+p_stokes = Function(P_fluid)
+
 ## Temperature
 u_f = TrialFunction(V_f)
 phi_f = TestFunction(V_f)
 
-a_f = inner(kappa_f/eps * grad(u_f), grad(phi_f))
-a_f += inner(c_f*rho_f/eps * grad(u_f), v_stokes) * phi_f
-a_f += 1/eps * c_f*rho_f/dt * inner(u_f, phi_f)
+a_f = inner(kappa_f * grad(u_f), grad(phi_f))
+a_f += inner(c_f*rho_f * grad(u_f)[0], u_bar) * phi_f
+a_f += cell_size*c_f*rho_f/dt * inner(u_f, phi_f)
 a_f *= dx_f
 
-a_f += alpha * inner(u_f, phi_f) * ds_f(interface_marker)
+a_f += alpha * inner(u_f, phi_f) * dx_f
 
-f_f = 1/eps * c_f*rho_f/dt * inner(theta_f_old, phi_f) * dx_f
-
-## SUPG:
-res = c_f*rho_f*(u_f - theta_f_old + dt*inner(v_stokes, grad(u_f))) \
-       - dt*kappa_f*div(grad(u_f))
-
-vnorm = sqrt(inner(v_stokes, v_stokes))
-h = CellDiameter(fluid_mesh)
-tau = 10*h/(2.0*vnorm) 
-supg_term = tau*inner(v_stokes, grad(phi_f))*res*dx_f
-f_f += rhs(supg_term)
-a_f += lhs(supg_term)
+f_f = cell_size*c_f*rho_f/dt * inner(theta_f_old, phi_f) * dx_f
 
 bc = DirichletBC(V_f, Constant(theta_cool), 
-                 "on_boundary && x[0] <= DOLFIN_EPS")
+                 "on_boundary && x[0] < DOLFIN_EPS")
+
+## SUPG: (here left side constant in time -> ok to only compute once)
+res_temp = c_f*rho_f*(cell_size*u_f - cell_size*theta_f_old 
+                      + dt*inner(u_bar, grad(u_f)[0])) \
+       - dt*kappa_f*div(grad(u_f))
+
+h = 1.0/res
+Pe = h * abs(u_bar) / (2 * kappa_f)
+tau_temp = (math.cosh(Pe)/math.sinh(Pe) - 1/Pe) * h/(2.0*abs(u_bar)) 
+supg_term = tau_temp*inner(u_bar, grad(phi_f)[0])*res_temp*dx_f
+f_f += rhs(supg_term)
+a_f += lhs(supg_term)
 
 A_f = PETScMatrix()
 assemble(a_f, tensor=A_f)
@@ -149,49 +160,47 @@ for boundary_c in [bc]:
 bi, bj, bv = A_f.mat().getValuesCSR()
 M_f = csr_matrix((bv, bj, bi))
 
-## Fluid:
-u_fluid, p_fluid = TestFunctions(W_fluid)
-psi_fluid, q_fluid = TrialFunctions(W_fluid)
+## Pressure:
+p_fluid = TestFunction(P_fluid)
+q_fluid = TrialFunction(P_fluid)
 
 mu_fn = mu_scale * (theta_cool/theta_f_old)**2
-momentum = inner(mu_fn * grad(u_fluid), grad(psi_fluid)) + inner(div(psi_fluid), p_fluid)
-mass = div(u_fluid)*q_fluid
+a_fluid_flow = inner(K*grad(p_fluid)[0], q_fluid)
 
-rhs_fluid = inner(Constant(0.0), q_fluid) 
+# SUPG
+p_e = -h/2.0 * grad(q_fluid)[0]
+a_fluid_flow += inner(K*grad(p_fluid)[0], p_e)
 
-A_stokes = (momentum + mass) * dx_f
-L_stokes = rhs_fluid * dx_f
+rhs_fluid_flow = inner(mu_fn*(u_bar - psi_eff), q_fluid + p_e) 
 
-A_stokes += 1.e-7*p_fluid*q_fluid*dx_f # trick to zero average from fenics forum
+A_stokes = a_fluid_flow * dx_f - inner(K*p_fluid, q_fluid) * ds_f(1)
+L_stokes = rhs_fluid_flow * dx_f + inner(mu_fn*(u_bar - psi_eff), h * q_fluid) * ds_f(1)
 
-## Boundary conditions
-class FlowBC(UserExpression):
-    def eval(self, values, x):
-        values[1] = 0
-        if x[1] < DOLFIN_EPS:
-            values[0] = u_bc_speed
-        elif (x[0] < DOLFIN_EPS or x[0] > L - DOLFIN_EPS) and x[1] <= eps + DOLFIN_EPS:
-            values[0] = u_bc_speed * (1 - x[1]/eps)
-        else:
-            values[0] = 0
+helper_bc = DirichletBC(P_fluid, Constant(0.0), "on_boundary and x[0] < DOLFIN_EPS")
 
-    def value_shape(self):
-        return (2,)
+# A = assemble(A_stokes)
+# L = assemble(L_stokes)
+# helper_bc.apply(A, L)
+# print(A.array())
 
-flow_bc_function = interpolate(FlowBC(), W_fluid.sub(0).collapse())
-stokes_bc = DirichletBC(W_fluid.sub(0), flow_bc_function, "on_boundary")
+# print(L.get_local())
+
+# exit()
 
 #%%
 ### Build matrix for complete system and construct coupling
-M_coupling = lil_matrix((dofs_g + dofs_f, dofs_g + dofs_f)) # best format for coupling
+M_complete = csr_matrix(bmat([[M_g, None], [None, M_f]]))
+M_coupling = lil_matrix(M_complete) # best format for coupling
 
 ## For coupling first find the mapping from fluid verticies to other mesh
 ## (Assume they have the same mesh/vertex structure)
-mass_matrix_fluid = assemble(inner(u_f, phi_f) * ds_f(interface_marker))
+mass_matrix_fluid = assemble(inner(u_f, phi_f) * dx_f)
 
 ## Match vertex coordinates
 wheel_kdtree = cKDTree(wheel_mesh.coordinates())
-distance_f_to_g, mapping_f_to_g = wheel_kdtree.query(fluid_mesh.coordinates(), 
+fluid_mesh_vertex_3D = np.column_stack((fluid_mesh.coordinates(), 
+                                        np.zeros((dofs_f, 1))))
+distance_f_to_g, mapping_f_to_g = wheel_kdtree.query(fluid_mesh_vertex_3D, 
                                        distance_upper_bound=distance_tol)
 connected_vertex = np.where(distance_f_to_g < distance_tol)[0]
 
@@ -204,14 +213,15 @@ for idx_f in connected_vertex:
 
     coupling_dofs, mass_values = mass_matrix_fluid.getrow(dof_f)
     coupling_dofs = coupling_dofs.astype(np.int32)
+    #print(coupling_dofs, mass_values)
+    # check if we are at the left boundary:
     idx_g = v_to_dof_g[mapping_f_to_g[idx_f]]
-
+    
     ## Set coupling in matrix:
     counter = 0
     for dof_f_k in coupling_dofs:
         k = dof_to_v_f[dof_f_k]
         if distance_f_to_g[k] < distance_tol:
-            # check if we are at the left boundary:
             dirichlet_point = fluid_mesh.coordinates()[k][0] < DOLFIN_EPS
             if not dirichlet_point:
                 M_coupling[dofs_g + dof_f_k, idx_g] -= alpha * mass_values[counter]
@@ -220,13 +230,15 @@ for idx_f in connected_vertex:
 
         counter += 1
 
-# Show matrix        
+### Show matrix        
 # import matplotlib.pylab as plt
 # plt.spy(M_coupling)
 # plt.show()
 
 ### Finish up coupling matrix and transform back to PETSc
 M_coupling = csr_matrix(M_coupling)
+petsc_mat = PETSc.Mat().createAIJ(size=M_coupling.shape, 
+                csr=(M_coupling.indptr, M_coupling.indices, M_coupling.data))
 
 ### Create vectors for writting the solution and rhs
 petsc_vec = PETSc.Vec()
@@ -240,19 +252,17 @@ u_sol_petsc.setSizes(dofs_g + dofs_f)
 u_sol_petsc.setUp()
 
 solver = PETSc.KSP().create()
+solver.setOperators(petsc_mat)
 solver.setType(PETSc.KSP.Type.PREONLY) #PREONLY, GMRES
 solver.getPC().setType(PETSc.PC.Type.LU)
 
-file_g     = File("Results/2DResults/Micro/" + name + "_Eps" + str(eps) + "/theta_g.pvd")
-file_f     = File("Results/2DResults/Micro/" + name + "_Eps" + str(eps) + "/theta_f.pvd")
-file_flow  = File("Results/2DResults/Micro/" + name + "_Eps" + str(eps) + "/fluid_f.pvd")
-file_press = File("Results/2DResults/Micro/" + name + "_Eps" + str(eps) + "/pressure_f.pvd")
+file_g     = File("Results/3DResults/Eff/theta_g.pvd")
+file_f     = File("Results/3DResults/Eff/theta_f.pvd")
+file_press = File("Results/3DResults/Eff/pressure_f.pvd")
 
 file_g << (theta_g_old, t_n)
 file_f << (theta_f_old, t_n)
-v_stokes_save, p_stokes_save = w_stokes.split()
-file_flow << (v_stokes_save, t_n)
-file_press << (p_stokes_save, t_n)
+file_press << (p_stokes, t_n)
 
 save_idx = 0
 
@@ -263,24 +273,13 @@ while t_n < T_int[1]:
     ## Fluid problem
     print("Start solving stokes")
     start_time = time.time()
-    solve(A_stokes==L_stokes, w_stokes, [stokes_bc], 
-          solver_parameters={'linear_solver' : 'mumps'})
+    solve(A_stokes==L_stokes, p_stokes, [helper_bc])
+    p_stokes.vector().set_local(
+        p_stokes.vector().get_local() - assemble(p_stokes * dx_f) / L
+    )
     print("Solving is done, took", time.time()- start_time)
+    
     ## Temperatur problem
-    # Update convection part:
-    A_f = PETScMatrix()
-    assemble(a_f, tensor=A_f)
-    for boundary_c in [bc]:
-        boundary_c.apply(A_f)
-
-    bi, bj, bv = A_f.mat().getValuesCSR()
-    M_f = csr_matrix((bv, bj, bi))
-
-    M_complete = csr_matrix(bmat([[M_g, None], [None, M_f]])) + M_coupling
-    petsc_mat = PETSc.Mat().createAIJ(size=M_complete.shape, 
-                csr=(M_complete.indptr, M_complete.indices, M_complete.data))
-    solver.setOperators(petsc_mat)
-
     # Build rhs 
     F_f = assemble(f_f)
     bc.apply(F_f)
@@ -299,7 +298,6 @@ while t_n < T_int[1]:
     if save_idx % 4 == 0:
         file_g << (theta_g_old, t_n)
         file_f << (theta_f_old, t_n)
-        file_flow << (v_stokes_save, t_n)
-        file_press << (p_stokes_save, t_n)
+        file_press << (p_stokes, t_n)
         save_idx = 0
     save_idx += 1

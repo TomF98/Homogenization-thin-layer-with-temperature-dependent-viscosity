@@ -5,7 +5,7 @@ import sys
 ### Parameters:
 gamma_0 = 0.5
 point_num = 64
-mesh_size_ref = 0.025
+mesh_size_ref = 0.05
 
 show_mesh = True
 

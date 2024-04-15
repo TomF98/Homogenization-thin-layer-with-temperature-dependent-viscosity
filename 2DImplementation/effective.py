@@ -7,6 +7,8 @@ from scipy.spatial import cKDTree
 import time 
 from petsc4py import PETSc
 
+save_name = ""
+
 ### Effective Parameters (depend on geometry)
 cond_scale = 0.64
 u_bc_eff = 0.306 
@@ -250,9 +252,9 @@ solver.setOperators(petsc_mat)
 solver.setType(PETSc.KSP.Type.PREONLY) #PREONLY, GMRES
 solver.getPC().setType(PETSc.PC.Type.LU)
 
-file_g     = File("Results/2DResults/Eff/theta_g.pvd")
-file_f     = File("Results/2DResults/Eff/theta_f.pvd")
-file_press = File("Results/2DResults/Eff/pressure_f.pvd")
+file_g     = File("Results/2DResults/Eff" + save_name + "/theta_g.pvd")
+file_f     = File("Results/2DResults/Eff" + save_name + "/theta_f.pvd")
+file_press = File("Results/2DResults/Eff" + save_name + "/pressure_f.pvd")
 
 file_g << (theta_g_old, t_n)
 file_f << (theta_f_old, t_n)

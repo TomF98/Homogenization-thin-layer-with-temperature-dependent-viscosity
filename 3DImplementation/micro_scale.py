@@ -10,9 +10,9 @@ from petsc4py import PETSc
 ### Problem parameters
 eps = 0.1
 
-name = "test2"
+name = "test1"
 
-L, H = 1, 1
+L, H, B = 1, 1, 1
 
 distance_tol = 1.e-5 # some distance to map the different meshes (smaller H)
 ## Wheel (g = grinding)
@@ -43,13 +43,13 @@ t_n = T_int[0]
 #%%
 ### Mesh loading
 fluid_mesh = Mesh()
-with XDMFFile("MeshCreation/2DMesh/fluid_domain" + str(eps) + ".xdmf") as infile:
+with XDMFFile("MeshCreation/3DMesh/fluid_domain" + str(eps) + ".xdmf") as infile:
    infile.read(fluid_mesh)
 
 dofs_f = len(fluid_mesh.coordinates())
 
 wheel_mesh = Mesh()
-with XDMFFile("MeshCreation/2DMesh/grind_domain" + str(eps) + ".xdmf") as infile:
+with XDMFFile("MeshCreation/3DMesh/grind_domain" + str(eps) + ".xdmf") as infile:
    infile.read(wheel_mesh)
 
 dofs_g = len(wheel_mesh.coordinates())
@@ -59,9 +59,10 @@ facet_markers_solid = MeshFunction("size_t", wheel_mesh, 1)
 ## Fluid and solid interface
 class Interface(SubDomain):
     def inside(self, x, on_boundary):
+        x2_b = near(x[2], B) or near(x[2], 0)
         x1_b = near(x[1], H) or near(x[1], 0)
         x0_b = near(x[0], L) or near(x[0], 0)
-        return on_boundary and not x0_b and not x1_b 
+        return on_boundary and not x0_b and not x1_b and not x2_b 
 
 Interface().mark(facet_markers_fluid, interface_marker)
 Interface().mark(facet_markers_solid, interface_marker)
@@ -168,6 +169,7 @@ A_stokes += 1.e-7*p_fluid*q_fluid*dx_f # trick to zero average from fenics forum
 class FlowBC(UserExpression):
     def eval(self, values, x):
         values[1] = 0
+        values[2] = 0
         if x[1] < DOLFIN_EPS:
             values[0] = u_bc_speed
         elif (x[0] < DOLFIN_EPS or x[0] > L - DOLFIN_EPS) and x[1] <= eps + DOLFIN_EPS:
@@ -176,7 +178,7 @@ class FlowBC(UserExpression):
             values[0] = 0
 
     def value_shape(self):
-        return (2,)
+        return (3,)
 
 flow_bc_function = interpolate(FlowBC(), W_fluid.sub(0).collapse())
 stokes_bc = DirichletBC(W_fluid.sub(0), flow_bc_function, "on_boundary")
@@ -243,10 +245,10 @@ solver = PETSc.KSP().create()
 solver.setType(PETSc.KSP.Type.PREONLY) #PREONLY, GMRES
 solver.getPC().setType(PETSc.PC.Type.LU)
 
-file_g     = File("Results/2DResults/Micro/" + name + "_Eps" + str(eps) + "/theta_g.pvd")
-file_f     = File("Results/2DResults/Micro/" + name + "_Eps" + str(eps) + "/theta_f.pvd")
-file_flow  = File("Results/2DResults/Micro/" + name + "_Eps" + str(eps) + "/fluid_f.pvd")
-file_press = File("Results/2DResults/Micro/" + name + "_Eps" + str(eps) + "/pressure_f.pvd")
+file_g     = File("Results/3DResults/Micro/" + name + "_Eps" + str(eps) + "/theta_g.pvd")
+file_f     = File("Results/3DResults/Micro/" + name + "_Eps" + str(eps) + "/theta_f.pvd")
+file_flow  = File("Results/3DResults/Micro/" + name + "_Eps" + str(eps) + "/fluid_f.pvd")
+file_press = File("Results/3DResults/Micro/" + name + "_Eps" + str(eps) + "/pressure_f.pvd")
 
 file_g << (theta_g_old, t_n)
 file_f << (theta_f_old, t_n)

@@ -1,6 +1,6 @@
 from dolfin import *
 
-bc_movement_dir = Constant((1, 0, 0)) # normalized direction of flat boundary
+bc_movement_dir = Constant((0, 1, 0)) # normalized direction of flat boundary
 
 ######################
 ### Domain and measure
@@ -8,7 +8,7 @@ domain_mesh = Mesh()
 with XDMFFile("MeshCreation/3DMesh/ref_cell.xdmf") as infile:
    infile.read(domain_mesh)
 
-domain_mesh = UnitCubeMesh(8, 8, 8)
+#domain_mesh = UnitCubeMesh(16, 16, 16)
 
 bc_marker = MeshFunction("size_t", domain_mesh, 2)
 
@@ -49,6 +49,7 @@ filev = File("Results/3DResults/cell_problem/bc_marker.pvd")
 filev << bc_marker
 
 for i in range(2):
+    print("###################################################")
     print("working on direction:", i)
     if i == 0:
         e_j = Constant((1.0, 0.0, 0.0))
@@ -102,7 +103,7 @@ for i in range(2):
     solve(a==f, w, solver_parameters={'linear_solver' : 'mumps'})
 
     u0, _ = w.split()
-
+    print("Heat diffusion")
     diffusion_scale_x = assemble(inner((grad(u0) + e_j), Constant((1, 0, 0)))*dx)
     print(diffusion_scale_x)
     diffusion_scale_y = assemble(inner((grad(u0) + e_j), Constant((0, 1, 0)))*dx)
@@ -141,11 +142,11 @@ for i in range(2):
     noslip_bc = DirichletBC(W_stokes.sub(0), Constant((0, 0, 0)), both_boundaries)
 
     w = Function(W_stokes)
-    solve(A_stokes==L_stokes, w, [noslip_bc]) 
-        #  solver_parameters={'linear_solver' : 'mumps'})
+    solve(A_stokes==L_stokes, w, [noslip_bc], 
+          solver_parameters={'linear_solver' : 'mumps'})
 
     u0, _, _ = w.split()
-
+    print("Permeability")
     permeability_x = assemble(inner(u0, Constant((1, 0, 0)))*dx)
     print(permeability_x)
     permeability_y = assemble(inner(u0, Constant((0, 1, 0)))*dx)
@@ -156,12 +157,15 @@ for i in range(2):
     filev << u0
 
 ##########################
+print("Boundary movement")    
 ### Flow given by boundary movement
 noslip_bc = DirichletBC(W_stokes.sub(0), Constant((0, 0, 0)), top_boundary)
 speed_bc  = DirichletBC(W_stokes.sub(0), bc_movement_dir, bottom_boundary)
 
 w = Function(W_stokes)
-solve(A_stokes==L_stokes, w, [noslip_bc, speed_bc])
+L_stokes = inner(Constant((0.0, 0.0, 0.0)), v)  * dx
+solve(A_stokes==L_stokes, w, [noslip_bc, speed_bc], 
+      solver_parameters={'linear_solver' : 'mumps'})
 
 u0, _, _ = w.split()
 

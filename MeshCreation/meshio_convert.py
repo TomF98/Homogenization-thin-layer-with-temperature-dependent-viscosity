@@ -8,7 +8,7 @@ def create_mesh(mesh, cell_type, prune_z=False):
         out_mesh.points = out_mesh.points[:, :2]
     return out_mesh
 
-eps = 0.05
+eps = 0.1
 
 msh=meshio.read("MeshCreation/2DMesh/fluid_domain" + str(eps) + ".msh")
 triangle_mesh = create_mesh(msh, "triangle", True)
