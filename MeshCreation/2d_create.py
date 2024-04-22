@@ -4,28 +4,45 @@ import gmsh
 import numpy as np
 import sys 
 
+"""
+Creates the 2D micro domains
+"""
+
+name = "sin_lowres"
+
 ### Parameters:
 L, H = 1, 1
 eps = 0.1
-gamma_0 = 0.1
+gamma_0 = 0.5
+delta = 0.1
 point_num = int(L/eps * 40) # for discrete interface, points per eps section
 
 fluid_marker = 0
 grinding_marker = 1
 
-mesh_size_max = 0.025
-mesh_size_min = 0.05 * eps
+mesh_size_max = 0.2 # 0.025
+mesh_size_min = 0.2 * eps # 0.05*eps
 show_mesh = False
 save_fluid = False
 
 ### Roughness function:
 def sin_rough(x):
-   return min(1 + (1-gamma_0)*np.sin(2*np.pi*x/eps + np.pi/2.0), 1.0)
+   x_mod = (x % eps) / eps
+   if x_mod < delta or x_mod > 1 - delta:
+      return 1.0
+   return 1.0 - (1-gamma_0)*(np.sin(2*np.pi*(x_mod-delta)/(1 - 2.0*delta) - np.pi/2.0)+1.0) / 2.0
 
-def triangle_rough(x):
-   x_s = x + eps/2.0
-   osci = x_s%eps / eps - int(x_s%eps / eps + 0.5)
-   return min(1.0 + (1-gamma_0) * (2*abs(2*osci)-1.0), 1.0)
+def rect_rough(x):
+   x_mod = (x % eps) / eps
+   if x_mod < delta or x_mod > 1 - delta:
+      return 1.0
+   if x_mod < 2 * delta:
+      x_shift = (x_mod - delta) / (delta)
+      return 1.0 - (1-gamma_0)*(-2 * (x_shift)**3 + 3 * x_shift**2)
+   if x_mod > 1 - 2 * delta:
+      x_shift = (x_mod - 1 + 2*delta) / (delta)
+      return 1.0 - (1-gamma_0)*(1 + 2 * (x_shift)**3 - 3 * x_shift**2)
+   return gamma_0
 
 rough_fn = sin_rough
 
@@ -83,9 +100,11 @@ gmsh.model.mesh.field.setAsBackgroundMesh(interface_area)
 
 gmsh.model.mesh.generate(2)
 if save_fluid:
-    gmsh.write('MeshCreation/2DMesh/fluid_domain' + str(eps) + '.msh')
+    gmsh.write("MeshCreation/2DMesh/"+ str(name) +"_fluid_domain_gamma0_" + str(gamma_0) + 
+               "_eps_" + str(eps) +'.msh')
 else:
-    gmsh.write('MeshCreation/2DMesh/grind_domain' + str(eps) + '.msh')
+    gmsh.write("MeshCreation/2DMesh/"+ str(name) +"_solid_domain_gamma0_" + str(gamma_0) + 
+               "_eps_" + str(eps) +'.msh')
 # Launch the GUI to see the results:
 if show_mesh and '-nopopup' not in sys.argv:
    gmsh.fltk.run()

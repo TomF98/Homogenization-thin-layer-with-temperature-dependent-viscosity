@@ -8,32 +8,36 @@ import time
 from petsc4py import PETSc
 
 ### Problem parameters
-eps = 0.1
-
-name = "test2"
+eps = 0.05
+name = "rect"
+inflow_typ = "linear"
+gamma_0 = 0.1
 
 L, H = 1, 1
 
 distance_tol = 1.e-5 # some distance to map the different meshes (smaller H)
 ## Wheel (g = grinding)
-kappa_g = 0.05
-c_g = 2.0
-rho_g = 2.0
+kappa_g = 0.5
+c_g = 1.0
+rho_g = 1.0
 
 ## Fluid 
-kappa_f = 10.0
-c_f = 2.0
-rho_f = 2.0 
+kappa_f = 1.0
+c_f = 1.0
+rho_f = 1.0 
 
-mu_scale = 1.0
+mu_scale_A = 1.0
+mu_scale_B = 1.5
+mu_scale_C = 0.2
+
 u_bc_speed = 1.0
 
-theta_cool = 10.0 # boundary condition temperatur
+theta_cool = 0.0 # boundary condition temperatur
 
 ## Interface interaction
-alpha = 5.0
+alpha = 1.0
 interface_marker = 2
-heat_production = 100.0
+heat_production = Expression("(1-x[1]/e) / (1 - g)", degree=1, e=eps, g=gamma_0)
 
 ## Time 
 T_int = [0, 5]
@@ -43,13 +47,15 @@ t_n = T_int[0]
 #%%
 ### Mesh loading
 fluid_mesh = Mesh()
-with XDMFFile("MeshCreation/2DMesh/fluid_domain" + str(eps) + ".xdmf") as infile:
+with XDMFFile("MeshCreation/2DMesh/XDMF/"+ str(name) +"_fluid_domain_gamma0_" 
+              + str(gamma_0) + "_eps_" + str(eps) +'.xdmf') as infile:
    infile.read(fluid_mesh)
 
 dofs_f = len(fluid_mesh.coordinates())
 
 wheel_mesh = Mesh()
-with XDMFFile("MeshCreation/2DMesh/grind_domain" + str(eps) + ".xdmf") as infile:
+with XDMFFile("MeshCreation/2DMesh/XDMF/"+ str(name) +"_solid_domain_gamma0_" 
+              + str(gamma_0) + "_eps_" + str(eps) +'.xdmf') as infile:
    infile.read(wheel_mesh)
 
 dofs_g = len(wheel_mesh.coordinates())
@@ -83,13 +89,15 @@ print("interface length", assemble(1 * ds_g(interface_marker)))
 u_g = TrialFunction(V_g)
 phi_g = TestFunction(V_g)
 
+heat_source = interpolate(heat_production, V_g)
+
 a_g = inner(kappa_g * grad(u_g), grad(phi_g))
 a_g += c_g * rho_g/dt * inner(u_g, phi_g)
 a_g *= dx_g
 
 a_g += alpha * inner(u_g, phi_g) * ds_g(interface_marker)
 
-f_g = inner(Constant(heat_production), phi_g) * ds_g(interface_marker)
+f_g = inner(heat_source, phi_g) * ds_g(interface_marker)
 f_g += c_g * rho_g/dt * inner(theta_g_old, phi_g) * dx_g
 
 A_g = PETScMatrix()
@@ -153,7 +161,7 @@ M_f = csr_matrix((bv, bj, bi))
 u_fluid, p_fluid = TestFunctions(W_fluid)
 psi_fluid, q_fluid = TrialFunctions(W_fluid)
 
-mu_fn = mu_scale * (theta_cool/theta_f_old)**2
+mu_fn = mu_scale_A * exp(mu_scale_B/(theta_f_old + mu_scale_C))
 momentum = inner(mu_fn * grad(u_fluid), grad(psi_fluid)) + inner(div(psi_fluid), p_fluid)
 mass = div(u_fluid)*q_fluid
 
@@ -243,10 +251,12 @@ solver = PETSc.KSP().create()
 solver.setType(PETSc.KSP.Type.PREONLY) #PREONLY, GMRES
 solver.getPC().setType(PETSc.PC.Type.LU)
 
-file_g     = File("Results/2DResults/Micro/" + name + "_Eps" + str(eps) + "/theta_g.pvd")
-file_f     = File("Results/2DResults/Micro/" + name + "_Eps" + str(eps) + "/theta_f.pvd")
-file_flow  = File("Results/2DResults/Micro/" + name + "_Eps" + str(eps) + "/fluid_f.pvd")
-file_press = File("Results/2DResults/Micro/" + name + "_Eps" + str(eps) + "/pressure_f.pvd")
+
+save_name = name + "_eps_" + str(eps) + "_gamma_" + str(gamma_0) + "_inflow_" + inflow_typ
+file_g     = File("Results/2DResults/Micro/" + save_name + "/theta_g.pvd")
+file_f     = File("Results/2DResults/Micro/" + save_name + "/theta_f.pvd")
+file_flow  = File("Results/2DResults/Micro/" + save_name + "/fluid_f.pvd")
+file_press = File("Results/2DResults/Micro/" + save_name + "/pressure_f.pvd")
 
 file_g << (theta_g_old, t_n)
 file_f << (theta_f_old, t_n)
@@ -256,7 +266,7 @@ file_press << (p_stokes_save, t_n)
 
 save_idx = 0
 
-while t_n < T_int[1]:
+while t_n < T_int[1] - dt/4.0:
     t_n += dt
     print("Working on time step", t_n)
     

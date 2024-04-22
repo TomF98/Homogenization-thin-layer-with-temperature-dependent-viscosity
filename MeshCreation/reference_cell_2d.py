@@ -4,23 +4,34 @@ import gmsh
 import numpy as np
 import sys 
 
+name = "rect"
+
 ### Parameters:
-gamma_0 = 0.5
-point_num = 80
+delta = 0.1
+gamma_0 = 0.1
+point_num = 160
 mesh_size_ref = 0.005
 
 show_mesh = False
 
 ### Roughness function:
 def sin_rough(x):
-   return min(1 + (1-gamma_0)*np.sin(2*np.pi*x + np.pi/2.0), 1.0)
+   if x < delta or x > 1 - delta:
+      return 1.0
+   return 1.0 - (1-gamma_0)*(np.sin(2*np.pi*(x-delta)/(1 - 2.0*delta) - np.pi/2.0)+1.0) / 2.0
 
-def triangle_rough(x):
-   x_s = x + 1/2.0
-   osci = x_s%1 - int(x_s%1 + 0.5)
-   return min(1.0 + (1-gamma_0) * (2*abs(2*osci)-1.0), 1.0)
+def rect_rough(x):
+   if x < delta or x > 1 - delta:
+      return 1.0
+   if x < 2 * delta:
+      x_shift = (x - delta) / (delta)
+      return 1.0 - (1-gamma_0)*(-2 * (x_shift)**3 + 3 * x_shift**2)
+   if x > 1 - 2 * delta:
+      x_shift = (x - 1 + 2*delta) / (delta)
+      return 1.0 - (1-gamma_0)*(1 + 2 * (x_shift)**3 - 3 * x_shift**2)
+   return gamma_0
 
-rough_fn = sin_rough
+rough_fn = rect_rough #sin_rough
 
 ### Start domain creation:
 gmsh.initialize()
@@ -48,6 +59,7 @@ fluid_layer = gmsh.model.occ.addPlaneSurface([loop])
 
 gmsh.model.occ.synchronize()
 
+# Left and right need the same vertices for a periodic mesh
 translation = [1, 0, 0, 1, 
                0, 1, 0, 0, 
                0, 0, 1, 0, 
@@ -61,7 +73,7 @@ gmsh.model.addPhysicalGroup(2, [1], 1, name="Dummy")
 gmsh.option.setNumber('Mesh.MeshSizeMax', mesh_size_ref)
 
 gmsh.model.mesh.generate(2)
-gmsh.write('MeshCreation/2DMesh/ref_cell.msh')
+gmsh.write("MeshCreation/2DMesh/cell_"+ name +"_gamma0_" + str(gamma_0) + ".msh")
 # Launch the GUI to see the results:
 if show_mesh and '-nopopup' not in sys.argv:
    gmsh.fltk.run()

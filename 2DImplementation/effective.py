@@ -7,13 +7,13 @@ from scipy.spatial import cKDTree
 import time 
 from petsc4py import PETSc
 
-save_name = ""
+save_name = "linear_sin_gamma0"
 
 ### Effective Parameters (depend on geometry)
 cond_scale = 0.64
+K = 0.017 
 u_bc_eff = 0.306 
 u_bar = 0.5 # depends on the boundary condition!
-K = 0.017  
 
 len_gamma = 1.65   
 cell_size = 0.84
@@ -23,24 +23,27 @@ res = 32
 distance_tol = 1.e-5 # some distance to map the different meshes 
                      # (has to be smaller than mesh size)
 ## Wheel (g = grinding)
-kappa_g = 0.05
-c_g = 2.0
-rho_g = 2.0
+kappa_g = 0.5
+c_g = 1.0
+rho_g = 1.0
 
 ## Fluid 
-kappa_f = 10.0 * cond_scale
-c_f = 2.0
-rho_f = 2.0 
+kappa_f = 1.0 * cond_scale
+c_f = 1.0
+rho_f = 1.0 
 
-mu_scale = 1.0
+mu_scale_A = 1.0
+mu_scale_B = 1.5
+mu_scale_C = 0.2
+
 u_bc_speed = 1.0
 
 psi_eff = u_bc_eff * u_bc_speed
 
-theta_cool = 10.0 # boundary condition temperatur
+theta_cool = 0.0 # boundary condition temperatur
 
 ## Interface interaction
-alpha = 5.0 * len_gamma
+alpha = 1.0 * len_gamma
 heat_production = 100.0 * len_gamma
 interface_marker = 2
 
@@ -110,7 +113,13 @@ class RightBoundary(SubDomain):
     def inside(self, x, on_boundary):
         return x[0] > L - DOLFIN_EPS
 
+class LeftBoundary(SubDomain):
+    def inside(self, x, on_boundary):
+        return x[0] < DOLFIN_EPS
+
+
 RightBoundary().mark(fluid_mesh_marker, 1)
+LeftBoundary().mark(fluid_mesh_marker, 2)
 
 theta_f_old = Function(V_f)
 theta_f_old.assign(Constant(theta_cool))
@@ -157,20 +166,17 @@ bi, bj, bv = A_f.mat().getValuesCSR()
 M_f = csr_matrix((bv, bj, bi))
 
 ## Pressure:
-p_fluid = TestFunction(P_fluid)
-q_fluid = TrialFunction(P_fluid)
+p_fluid = TrialFunction(P_fluid)
+q_fluid = TestFunction(P_fluid)
 
-mu_fn = mu_scale * (theta_cool/theta_f_old)**2
-a_fluid_flow = inner(K*grad(p_fluid)[0], q_fluid)
+mu_fn = mu_scale_A * exp(mu_scale_B/(theta_f_old + mu_scale_C))
 
-# SUPG
-p_e = -h/2.0 * grad(q_fluid)[0]
-a_fluid_flow += inner(K*grad(p_fluid)[0], p_e)
+a_pressure = inner(K/mu_fn * grad(p_fluid), grad(q_fluid)) * dx_f
+f_pressure = inner(u_bar - psi_eff, q_fluid) * ds_f(2) 
+f_pressure -= inner(u_bar - psi_eff, q_fluid) * ds_f(1) 
 
-rhs_fluid_flow = inner(mu_fn*(u_bar - psi_eff), q_fluid + p_e) 
-
-A_stokes = a_fluid_flow * dx_f - inner(K*p_fluid, q_fluid) * ds_f(1)
-L_stokes = rhs_fluid_flow * dx_f + inner(mu_fn*(u_bar - psi_eff), h * q_fluid) * ds_f(1)
+A_stokes = a_pressure
+L_stokes = f_pressure
 
 helper_bc = DirichletBC(P_fluid, Constant(0.0), "on_boundary and x[0] < DOLFIN_EPS")
 
@@ -252,9 +258,9 @@ solver.setOperators(petsc_mat)
 solver.setType(PETSc.KSP.Type.PREONLY) #PREONLY, GMRES
 solver.getPC().setType(PETSc.PC.Type.LU)
 
-file_g     = File("Results/2DResults/Eff" + save_name + "/theta_g.pvd")
-file_f     = File("Results/2DResults/Eff" + save_name + "/theta_f.pvd")
-file_press = File("Results/2DResults/Eff" + save_name + "/pressure_f.pvd")
+file_g     = File("Results/2DResults/Eff/" + save_name + "/theta_g.pvd")
+file_f     = File("Results/2DResults/Eff/" + save_name + "/theta_f.pvd")
+file_press = File("Results/2DResults/Eff/" + save_name + "/pressure_f.pvd")
 
 file_g << (theta_g_old, t_n)
 file_f << (theta_f_old, t_n)
@@ -262,7 +268,7 @@ file_press << (p_stokes, t_n)
 
 save_idx = 0
 
-while t_n < T_int[1]:
+while t_n < T_int[1] - dt/4.0:
     t_n += dt
     print("Working on time step", t_n)
     
