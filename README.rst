@@ -1,4 +1,6 @@
-## Implementations for the Paper:
+==============================
+Implementations for the Paper:
+==============================
 
 This repository contains the source codes for all simulations presented in the article Link.
 
@@ -17,5 +19,7 @@ An example environment is provided in the ``environment.yml``.
 .. _`meshio`: https://pypi.org/project/meshio/
 
 
-### Usage:
+Usage:
+======
+
 Inside the folder `MeshCreation` all files that handle the creation of the domains, meshes and reference cells are collected. Once a mesh has been created, it has to be transformed with meshio to be usable with FEniCS, see `meshio_convert.py`. Afterward, the mesh can be used to simulate the problem with the code provided in `2DImplementation` or `3DImplementation`.  
