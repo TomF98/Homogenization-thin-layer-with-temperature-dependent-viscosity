@@ -12,9 +12,9 @@ def create_mesh(mesh, cell_type, prune_z=False):
         out_mesh.points = out_mesh.points[:, :2]
     return out_mesh
 
-eps = 0.05
+eps = 0.1
 name = "sin"
-gamma_0 = 0.1
+gamma_0 = 0.5
 
 msh=meshio.read("MeshCreation/2DMesh/"+ str(name) +"_fluid_domain_gamma0_" + str(gamma_0) + 
                "_eps_" + str(eps) +'.msh')

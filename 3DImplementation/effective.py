@@ -16,10 +16,10 @@ K = Constant(((0.0046, 0.0), (0.0, 0.005))) #Constant(((0.1, 0.01), (-0.5, 0.9))
 
 u_bc_eff = Constant((0.134, 0))
 
-u_bar = Constant((0.5, 0))
+u_bar = Constant((0.25, 0))
 
-len_gamma = 1.025  
-cell_size = 0.96
+len_gamma = 3.21  
+cell_size = 0.69
 ### Problem parameters
 L, B, H = 1, 1, 1
 res = 32
@@ -34,14 +34,14 @@ class HeatSoruce(UserExpression):
 
     def eval(self, values, x):
         if x[1] > L/2.0 and abs(x[0] - 0.5) < 0.1:
-            values[0] = 2.0
+            values[0] = len_gamma
         else:
             values[0] = 0.0
 
 heat_production = HeatSoruce()
 
 ## Fluid 
-kappa_f = 0.005 * cond_scale
+kappa_f = 0.01 * cond_scale
 c_f = 1.0
 rho_f = 1.0 
 
@@ -276,7 +276,7 @@ solver.setType(PETSc.KSP.Type.GMRES) #PREONLY, GMRES
 file_g     = File("Results/3DResults/Eff/" + save_name + "/theta_g.pvd")
 file_f     = File("Results/3DResults/Eff/" + save_name + "/theta_f.pvd")
 file_press = File("Results/3DResults/Eff/" + save_name + "/pressure_f.pvd")
-file_u = File("Results/3DResults/Eff/" + save_name + "/u_f.pvd")
+file_u     = File("Results/3DResults/Eff/" + save_name + "/u_f.pvd")
 
 file_g << (theta_g_old, t_n)
 file_f << (theta_f_old, t_n)
@@ -333,3 +333,9 @@ while t_n < T_int[1]:
         file_u << (u_eff, t_n)
         save_idx = 0
     save_idx += 1
+
+if save_idx > 1:
+    file_g << (theta_g_old, t_n)
+    file_f << (theta_f_old, t_n)
+    file_press << (p_stokes, t_n)
+    file_u << (u_eff, t_n)

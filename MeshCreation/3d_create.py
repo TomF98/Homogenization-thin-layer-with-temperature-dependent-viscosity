@@ -5,17 +5,16 @@ import sys
 ### Parameters:
 L, H, B = 1, 1, 1
 eps = 0.1
-gamma_0 = 0.5
-point_num = int(L/eps * 50) # for discrete interface, points per eps section
+gamma_0 = 0.1
+point_num = int(L/eps * 40) # for discrete interface, points per eps section
 
 fluid_marker = 0
 grinding_marker = 1
 
-mesh_size_max = 0.05
-mesh_size_min = 0.05 * eps
+mesh_size_max = 0.08
+mesh_size_min = 0.08 * eps
 
 show_mesh = False
-save_fluid = False
 
 ### Roughness function:
 def sin_rough(x, y):
@@ -192,18 +191,16 @@ gmsh.model.mesh.setSize([(0, 1), (0, 2), (0, 3), (0, 4)], mesh_size_min)
 gmsh.option.setNumber('Mesh.MeshSizeMin', mesh_size_min)
 gmsh.option.setNumber('Mesh.MeshSizeMax', mesh_size_max)
 
-### Mark subdomains
-if save_fluid:
-    gmsh.model.addPhysicalGroup(3, [2], fluid_marker, name="Fluid")
-else:
-    gmsh.model.addPhysicalGroup(3, [1], grinding_marker, name="Wheel")
-
 gmsh.model.mesh.generate(3)
 
-if save_fluid:
-    gmsh.write('MeshCreation/3DMesh/fluid_domain' + str(eps) + '.msh')
-else:
-    gmsh.write('MeshCreation/3DMesh/grind_domain' + str(eps) + '.msh')
+### Mark subdomains
+gmsh.model.addPhysicalGroup(3, [2], fluid_marker, name="Fluid")
+gmsh.write('MeshCreation/3DMesh/fluid_domain' + str(eps) + '.msh')
+
+gmsh.model.removePhysicalGroups()
+
+gmsh.model.addPhysicalGroup(3, [1], grinding_marker, name="Wheel")
+gmsh.write('MeshCreation/3DMesh/grind_domain' + str(eps) + '.msh')
 
 if show_mesh and '-nopopup' not in sys.argv:
    gmsh.fltk.run()

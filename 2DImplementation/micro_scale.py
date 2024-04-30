@@ -326,3 +326,10 @@ for name in name_list:
                     file_press << (p_stokes_save, t_n)
                     save_idx = 0
                 save_idx += 1
+
+            # save last step:
+            if save_idx > 1:
+                file_g << (theta_g_old, t_n)
+                file_f << (theta_f_old, t_n)
+                file_flow << (v_stokes_save, t_n)
+                file_press << (p_stokes_save, t_n)

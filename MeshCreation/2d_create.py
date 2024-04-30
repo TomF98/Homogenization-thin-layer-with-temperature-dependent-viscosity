@@ -23,7 +23,6 @@ grinding_marker = 1
 mesh_size_max = 0.025
 mesh_size_min = 0.05*eps
 show_mesh = False
-save_fluid = False
 
 ### Roughness function:
 def sin_rough(x):
@@ -76,11 +75,6 @@ gmsh.model.occ.synchronize()
 omega = gmsh.model.occ.fragment([[2, grind_wheel]], [[2, fluid_layer]])
 
 gmsh.model.occ.synchronize()
-### Mark subdomains
-if save_fluid:
-    gmsh.model.addPhysicalGroup(2, [1], fluid_marker, name="Fluid")
-else:
-    gmsh.model.addPhysicalGroup(2, [2], grinding_marker, name="Wheel")
 
 
 gmsh.option.setNumber('Mesh.MeshSizeMax', mesh_size_max)
@@ -99,12 +93,18 @@ gmsh.model.mesh.field.setNumber(interface_area, "YMin", -0.1)
 gmsh.model.mesh.field.setAsBackgroundMesh(interface_area)
 
 gmsh.model.mesh.generate(2)
-if save_fluid:
-    gmsh.write("MeshCreation/2DMesh/"+ str(name) +"_fluid_domain_gamma0_" + str(gamma_0) + 
+
+### Mark subdomains and save separate
+gmsh.model.addPhysicalGroup(2, [1], fluid_marker, name="Fluid")
+gmsh.write("MeshCreation/2DMesh/"+ str(name) +"_fluid_domain_gamma0_" + str(gamma_0) + 
+            "_eps_" + str(eps) +'.msh')
+
+gmsh.model.removePhysicalGroups()
+
+gmsh.model.addPhysicalGroup(2, [2], grinding_marker, name="Wheel")
+gmsh.write("MeshCreation/2DMesh/"+ str(name) +"_solid_domain_gamma0_" + str(gamma_0) + 
                "_eps_" + str(eps) +'.msh')
-else:
-    gmsh.write("MeshCreation/2DMesh/"+ str(name) +"_solid_domain_gamma0_" + str(gamma_0) + 
-               "_eps_" + str(eps) +'.msh')
+
 # Launch the GUI to see the results:
 if show_mesh and '-nopopup' not in sys.argv:
    gmsh.fltk.run()

@@ -313,3 +313,9 @@ while t_n < T_int[1] - dt/4.0:
         file_press << (p_stokes, t_n)
         save_idx = 0
     save_idx += 1
+
+# save last step
+if save_idx > 1:
+    file_g << (theta_g_old, t_n)
+    file_f << (theta_f_old, t_n)
+    file_press << (p_stokes, t_n)

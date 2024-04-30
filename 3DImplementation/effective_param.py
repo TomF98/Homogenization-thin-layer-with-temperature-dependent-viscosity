@@ -1,6 +1,6 @@
 from dolfin import *
 
-bc_movement_dir = Constant((0, 1, 0)) # normalized direction of flat boundary
+bc_movement_dir = Constant((1, 0, 0)) # normalized direction of flat boundary
 
 ######################
 ### Domain and measure
@@ -8,7 +8,7 @@ domain_mesh = Mesh()
 with XDMFFile("MeshCreation/3DMesh/ref_cell.xdmf") as infile:
    infile.read(domain_mesh)
 
-#domain_mesh = UnitCubeMesh(16, 16, 16)
+###domain_mesh = UnitCubeMesh(16, 16, 16)
 
 bc_marker = MeshFunction("size_t", domain_mesh, 2)
 
@@ -30,7 +30,7 @@ def both_boundaries(x, on_boundary):
 
 
 print("cell volume:", assemble(1 * dx))
-print("interface length (not always correct):", assemble(1 * ds)-5)
+print("interface length (not always correct):", assemble(1 * ds) - 5)
 
 
 class MarkHelper(SubDomain): # This will later on become 1 free surface
