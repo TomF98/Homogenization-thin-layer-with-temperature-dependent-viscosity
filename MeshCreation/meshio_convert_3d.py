@@ -9,13 +9,13 @@ def create_mesh(mesh, cell_type):
 
 eps = 0.1
 
-msh=meshio.read("MeshCreation/3DMesh/fluid_domain" + str(eps) + ".msh")
-tetraeder_mesh = create_mesh(msh, "tetra")
-meshio.write("MeshCreation/3DMesh/fluid_domain" + str(eps) + ".xdmf", tetraeder_mesh)
+# msh=meshio.read("MeshCreation/3DMesh/fluid_domain" + str(eps) + ".msh")
+# tetraeder_mesh = create_mesh(msh, "tetra")
+# meshio.write("MeshCreation/3DMesh/fluid_domain" + str(eps) + ".xdmf", tetraeder_mesh)
 
-msh=meshio.read("MeshCreation/3DMesh/grind_domain" + str(eps) + ".msh")
-tetraeder_mesh = create_mesh(msh, "tetra")
-meshio.write("MeshCreation/3DMesh/grind_domain" + str(eps) + ".xdmf", tetraeder_mesh)
+# msh=meshio.read("MeshCreation/3DMesh/grind_domain" + str(eps) + ".msh")
+# tetraeder_mesh = create_mesh(msh, "tetra")
+# meshio.write("MeshCreation/3DMesh/grind_domain" + str(eps) + ".xdmf", tetraeder_mesh)
 
 msh=meshio.read("MeshCreation/3DMesh/ref_cell.msh")
 tetraeder_mesh = create_mesh(msh, "tetra")

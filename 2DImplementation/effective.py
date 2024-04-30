@@ -7,16 +7,27 @@ from scipy.spatial import cKDTree
 import time 
 from petsc4py import PETSc
 
-save_name = "linear_sin_gamma0"
+"""
+Interface length and cell volume for each roughness:
+sin, 0.1 : 2.218, 0.64
+sin, 0.5 : 1.521, 0.8
+sin, 0.9 : 1.025, 0.96
+rect, 0.1 : 2.609, 0.37
+rect, 0.5 : 1,819, 0.65
+rect, 0.9 : 1.084, 0.93
+"""
 
+
+save_name = "heat_scaled_rect_gamma0_0.5"
 ### Effective Parameters (depend on geometry)
-cond_scale = 0.64
-K = 0.017 
-u_bc_eff = 0.306 
-u_bar = 0.5 # depends on the boundary condition!
+cond_scale = 0.523
+K = 0.01124 
+u_bc_eff = 0.2556
+u_bar = 1./2.0 # depends on the boundary condition!
+heat_production = 1.0
 
-len_gamma = 1.65   
-cell_size = 0.84
+len_gamma = 1.819
+cell_size = 0.65
 ### Problem parameters
 L, H = 1, 1
 res = 32
@@ -28,13 +39,13 @@ c_g = 1.0
 rho_g = 1.0
 
 ## Fluid 
-kappa_f = 1.0 * cond_scale
+kappa_f = 0.1 * cond_scale
 c_f = 1.0
 rho_f = 1.0 
 
-mu_scale_A = 1.0
-mu_scale_B = 1.5
-mu_scale_C = 0.2
+mu_scale_A = 0.2
+mu_scale_B = 3.0
+mu_scale_C = 0.6
 
 u_bc_speed = 1.0
 
@@ -44,7 +55,6 @@ theta_cool = 0.0 # boundary condition temperatur
 
 ## Interface interaction
 alpha = 1.0 * len_gamma
-heat_production = 100.0 * len_gamma
 interface_marker = 2
 
 ## Time 

@@ -7,44 +7,59 @@ from scipy.spatial import cKDTree
 import time 
 from petsc4py import PETSc
 
+save_name = "temperature_viscosity"
+
 ### Effective Parameters (depend on geometry)
-cond_scale_x = 0.64
-cond_scale_y = 0.64
+cond_scale = Constant(((0.4925, 0), (0, 0.635))) #Constant(((0.1, 0), (0, 0.5)))
 
-u_bc_eff_x = 0.306
-u_bc_eff_y = 0.0 
+K = Constant(((0.0046, 0.0), (0.0, 0.005))) #Constant(((0.1, 0.01), (-0.5, 0.9)))
 
-K_x = 0.017  
-K_y = 0.017
+u_bc_eff = Constant((0.134, 0))
 
-len_gamma = 1.31   
-cell_size = 0.84
+u_bar = Constant((0.5, 0))
+
+len_gamma = 1.025  
+cell_size = 0.96
 ### Problem parameters
-L, H, B = 1, 1, 1
-res = 16
+L, B, H = 1, 1, 1
+res = 32
 distance_tol = 1.e-5 # some distance to map the different meshes 
                      # (has to be smaller than mesh size)
 ## Wheel (g = grinding)
-kappa_g = 0.05
-c_g = 2.0
-rho_g = 2.0
+kappa_g = 0.5
+c_g = 1.0
+rho_g = 1.0
+
+class HeatSoruce(UserExpression):
+
+    def eval(self, values, x):
+        if x[1] > L/2.0 and abs(x[0] - 0.5) < 0.1:
+            values[0] = 2.0
+        else:
+            values[0] = 0.0
+
+heat_production = HeatSoruce()
 
 ## Fluid 
-kappa_f = 10.0 * Constant((cond_scale_x, cond_scale_y))
-c_f = 2.0
-rho_f = 2.0 
+kappa_f = 0.005 * cond_scale
+c_f = 1.0
+rho_f = 1.0 
 
-mu_scale = 1.0
+mu_scale_A = 0.2
+mu_scale_B = 3.0
+mu_scale_C = 0.4
+
 u_bc_speed = 1.0
 
-psi_eff = u_bc_speed
+psi_eff = u_bc_eff * u_bc_speed
 
-theta_cool = 10.0 # boundary condition temperatur
+theta_cool = 0.0 # boundary condition temperatur
 
 ## Interface interaction
-alpha = 5.0 * len_gamma
-heat_production = 100.0 * len_gamma
+alpha = 1.0 * len_gamma
 interface_marker = 2
+boundary_in_marker = 1
+boundary_out_marker = 2
 
 ## Time 
 T_int = [0, 5]
@@ -61,7 +76,7 @@ wheel_mesh = BoxMesh(Point(0, 0, 0), Point(L, B, H), res, res, res)
 
 dofs_g = len(wheel_mesh.coordinates())
 
-facet_markers_solid = MeshFunction("size_t", wheel_mesh, 1)
+facet_markers_solid = MeshFunction("size_t", wheel_mesh, 2)
 ## Fluid and solid interface
 class Interface(SubDomain):
     def inside(self, x, on_boundary):
@@ -74,7 +89,11 @@ print("Size of domains")
 print("Wheel dofs", dofs_g)
 print("Fluid dofs", dofs_f)
 
-exit()
+file_domain = File("Results/3DResults/Eff/" + save_name + "/box_mesh.pvd")
+file_domain << facet_markers_solid
+file_domain = File("Results/3DResults/Eff/" + save_name + "/fluid_mesh.pvd")
+file_domain << fluid_mesh
+
 #%%
 ### Grinding wheel Problem:
 V_g = FunctionSpace(wheel_mesh, "CG", 1)
@@ -84,6 +103,9 @@ theta_g_old.assign(Constant(theta_cool))
 dx_g = Measure("dx", wheel_mesh)
 ds_g = Measure("ds", wheel_mesh, subdomain_data=facet_markers_solid)
 
+heat_production = interpolate(heat_production, V_g)
+file_domain = File("Results/3DResults/Eff/" + save_name + "/heat_source.pvd")
+file_domain << heat_production
 
 u_g = TrialFunction(V_g)
 phi_g = TestFunction(V_g)
@@ -94,7 +116,7 @@ a_g *= dx_g
 
 a_g += alpha * inner(u_g, phi_g) * ds_g(interface_marker)
 
-f_g = inner(Constant(heat_production), phi_g) * ds_g(interface_marker)
+f_g = inner(heat_production, phi_g) * ds_g(interface_marker)
 f_g += c_g * rho_g/dt * inner(theta_g_old, phi_g) * dx_g
 
 
@@ -105,55 +127,60 @@ M_g = csr_matrix((bv, bj, bi))
 
 #%%
 ### Fluid Problem 
-V_f = FunctionSpace(fluid_mesh, "CG", 1)
-P_fluid = FunctionSpace(fluid_mesh, "CG", 1)
+Theta_f = FunctionSpace(fluid_mesh, "CG", 1)
+V_f = VectorFunctionSpace(fluid_mesh, "CG", 1)
+
+n_sigma = FacetNormal(fluid_mesh)
 
 fluid_mesh_marker = MeshFunction("size_t", fluid_mesh, 0)
 
-class RightBoundary(SubDomain):
+class InBoundary(SubDomain):
     def inside(self, x, on_boundary):
-        return x[0] > L - DOLFIN_EPS
+        return x[0] < DOLFIN_EPS
 
-RightBoundary().mark(fluid_mesh_marker, 1)
+class OutBoundary(SubDomain):
+    def inside(self, x, on_boundary):
+        return x[0] > DOLFIN_EPS
 
-theta_f_old = Function(V_f)
+InBoundary().mark(fluid_mesh_marker, boundary_in_marker)
+OutBoundary().mark(fluid_mesh_marker, boundary_out_marker)
+
+theta_f_old = Function(Theta_f)
 theta_f_old.assign(Constant(theta_cool))
+
+u_eff = Function(V_f)
+p_stokes = Function(Theta_f)
 
 dx_f = Measure("dx", fluid_mesh)
 ds_f = Measure("ds", fluid_mesh, subdomain_data=fluid_mesh_marker)
 
-p_stokes = Function(P_fluid)
-
 ## Temperature
-u_f = TrialFunction(V_f)
-phi_f = TestFunction(V_f)
+temp_f = TrialFunction(Theta_f)
+phi_f = TestFunction(Theta_f)
 
-a_f = inner(kappa_f * grad(u_f), grad(phi_f))
-a_f += inner(c_f*rho_f * grad(u_f)[0], u_bar) * phi_f
-a_f += cell_size*c_f*rho_f/dt * inner(u_f, phi_f)
+a_f = inner(kappa_f * grad(temp_f), grad(phi_f))
+a_f += inner(c_f*rho_f * grad(temp_f), u_eff) * phi_f
+a_f += cell_size*c_f*rho_f/dt * inner(temp_f, phi_f)
 a_f *= dx_f
 
-a_f += alpha * inner(u_f, phi_f) * dx_f
+a_f += alpha * inner(temp_f, phi_f) * dx_f
 
 f_f = cell_size*c_f*rho_f/dt * inner(theta_f_old, phi_f) * dx_f
 
-bc = DirichletBC(V_f, Constant(theta_cool), 
-                 "on_boundary && x[0] < DOLFIN_EPS")
+bc = DirichletBC(Theta_f, Constant(theta_cool), "on_boundary && x[0] < DOLFIN_EPS")
 
-## SUPG: (here left side constant in time -> ok to only compute once)
-res_temp = c_f*rho_f*(cell_size*u_f - cell_size*theta_f_old 
-                      + dt*inner(u_bar, grad(u_f)[0])) \
-       - dt*kappa_f*div(grad(u_f))
+## SUPG: 
+res_temp = c_f*rho_f*(cell_size*temp_f - cell_size*theta_f_old + dt*inner(u_eff, grad(temp_f))) \
+                - dt*div(kappa_f*grad(temp_f))
 
 h = 1.0/res
-Pe = h * abs(u_bar) / (2 * kappa_f)
-tau_temp = (math.cosh(Pe)/math.sinh(Pe) - 1/Pe) * h/(2.0*abs(u_bar)) 
-supg_term = tau_temp*inner(u_bar, grad(phi_f)[0])*res_temp*dx_f
-f_f += rhs(supg_term)
-a_f += lhs(supg_term)
+tau_temp = 1.0 * h/(2.0*sqrt(inner(u_eff, u_eff)) + 0.001) # add small value since at the start 0 
+supg_term = tau_temp*inner(u_eff, grad(phi_f))*res_temp*dx_f
+supg_f = rhs(supg_term)
+supg_a = lhs(supg_term)
 
 A_f = PETScMatrix()
-assemble(a_f, tensor=A_f)
+assemble(a_f + supg_a, tensor=A_f)
 for boundary_c in [bc]:
     boundary_c.apply(A_f)
 
@@ -161,22 +188,19 @@ bi, bj, bv = A_f.mat().getValuesCSR()
 M_f = csr_matrix((bv, bj, bi))
 
 ## Pressure:
-p_fluid = TestFunction(P_fluid)
-q_fluid = TrialFunction(P_fluid)
+p_fluid = TrialFunction(Theta_f)
+q_fluid = TestFunction(Theta_f)
 
-mu_fn = mu_scale * (theta_cool/theta_f_old)**2
-a_fluid_flow = inner(K*grad(p_fluid)[0], q_fluid)
+mu_fn = mu_scale_A * exp(mu_scale_B/(theta_f_old + mu_scale_C))
 
-# SUPG
-p_e = -h/2.0 * grad(q_fluid)[0]
-a_fluid_flow += inner(K*grad(p_fluid)[0], p_e)
+a_pressure = inner(K/mu_fn * grad(p_fluid), grad(q_fluid)) * dx_f
+f_pressure = -inner(u_bar - psi_eff, n_sigma) * q_fluid * ds_f 
 
-rhs_fluid_flow = inner(mu_fn*(u_bar - psi_eff), q_fluid + p_e) 
+A_stokes = a_pressure
+L_stokes = f_pressure
 
-A_stokes = a_fluid_flow * dx_f - inner(K*p_fluid, q_fluid) * ds_f(1)
-L_stokes = rhs_fluid_flow * dx_f + inner(mu_fn*(u_bar - psi_eff), h * q_fluid) * ds_f(1)
-
-helper_bc = DirichletBC(P_fluid, Constant(0.0), "on_boundary and x[0] < DOLFIN_EPS")
+helper_bc = DirichletBC(Theta_f, Constant(0.0), "on_boundary and x[0] < DOLFIN_EPS and x[1] < DOLFIN_EPS",
+                        method="pointwise")
 
 # A = assemble(A_stokes)
 # L = assemble(L_stokes)
@@ -185,8 +209,6 @@ helper_bc = DirichletBC(P_fluid, Constant(0.0), "on_boundary and x[0] < DOLFIN_E
 
 # print(L.get_local())
 
-# exit()
-
 #%%
 ### Build matrix for complete system and construct coupling
 M_complete = csr_matrix(bmat([[M_g, None], [None, M_f]]))
@@ -194,7 +216,7 @@ M_coupling = lil_matrix(M_complete) # best format for coupling
 
 ## For coupling first find the mapping from fluid verticies to other mesh
 ## (Assume they have the same mesh/vertex structure)
-mass_matrix_fluid = assemble(inner(u_f, phi_f) * dx_f)
+mass_matrix_fluid = assemble(inner(temp_f, phi_f) * dx_f)
 
 ## Match vertex coordinates
 wheel_kdtree = cKDTree(wheel_mesh.coordinates())
@@ -205,8 +227,8 @@ distance_f_to_g, mapping_f_to_g = wheel_kdtree.query(fluid_mesh_vertex_3D,
 connected_vertex = np.where(distance_f_to_g < distance_tol)[0]
 
 v_to_dof_g = vertex_to_dof_map(V_g)
-v_to_dof_f = vertex_to_dof_map(V_f)
-dof_to_v_f = dof_to_vertex_map(V_f)
+v_to_dof_f = vertex_to_dof_map(Theta_f)
+dof_to_Theta_f = dof_to_vertex_map(Theta_f)
 
 for idx_f in connected_vertex:
     dof_f = v_to_dof_f[idx_f]
@@ -220,7 +242,7 @@ for idx_f in connected_vertex:
     ## Set coupling in matrix:
     counter = 0
     for dof_f_k in coupling_dofs:
-        k = dof_to_v_f[dof_f_k]
+        k = dof_to_Theta_f[dof_f_k]
         if distance_f_to_g[k] < distance_tol:
             dirichlet_point = fluid_mesh.coordinates()[k][0] < DOLFIN_EPS
             if not dirichlet_point:
@@ -236,10 +258,6 @@ for idx_f in connected_vertex:
 # plt.show()
 
 ### Finish up coupling matrix and transform back to PETSc
-M_coupling = csr_matrix(M_coupling)
-petsc_mat = PETSc.Mat().createAIJ(size=M_coupling.shape, 
-                csr=(M_coupling.indptr, M_coupling.indices, M_coupling.data))
-
 ### Create vectors for writting the solution and rhs
 petsc_vec = PETSc.Vec()
 petsc_vec.create(PETSc.COMM_WORLD)
@@ -252,43 +270,56 @@ u_sol_petsc.setSizes(dofs_g + dofs_f)
 u_sol_petsc.setUp()
 
 solver = PETSc.KSP().create()
-solver.setOperators(petsc_mat)
-solver.setType(PETSc.KSP.Type.PREONLY) #PREONLY, GMRES
-solver.getPC().setType(PETSc.PC.Type.LU)
+solver.setType(PETSc.KSP.Type.GMRES) #PREONLY, GMRES
+#solver.getPC().setType(PETSc.PC.Type.LU)
 
-file_g     = File("Results/3DResults/Eff/theta_g.pvd")
-file_f     = File("Results/3DResults/Eff/theta_f.pvd")
-file_press = File("Results/3DResults/Eff/pressure_f.pvd")
+file_g     = File("Results/3DResults/Eff/" + save_name + "/theta_g.pvd")
+file_f     = File("Results/3DResults/Eff/" + save_name + "/theta_f.pvd")
+file_press = File("Results/3DResults/Eff/" + save_name + "/pressure_f.pvd")
+file_u = File("Results/3DResults/Eff/" + save_name + "/u_f.pvd")
 
 file_g << (theta_g_old, t_n)
 file_f << (theta_f_old, t_n)
 file_press << (p_stokes, t_n)
+file_u << (u_eff, t_n)
 
 save_idx = 0
 
 while t_n < T_int[1]:
     t_n += dt
     print("Working on time step", t_n)
-    
+
     ## Fluid problem
     print("Start solving stokes")
     start_time = time.time()
     solve(A_stokes==L_stokes, p_stokes, [helper_bc])
     p_stokes.vector().set_local(
-        p_stokes.vector().get_local() - assemble(p_stokes * dx_f) / L
+        p_stokes.vector().get_local() - assemble(p_stokes * dx_f) / (L*B)
     )
     print("Solving is done, took", time.time()- start_time)
     
+    ## Compute effective u
+    u_eff.assign(project(-K/mu_fn * grad(p_stokes) + u_bc_eff, V_f))
+
     ## Temperatur problem
     # Build rhs 
-    F_f = assemble(f_f)
-    bc.apply(F_f)
+    A_f_current, F_f = assemble_system(a_f + supg_a, f_f + supg_f, bc, A_tensor=A_f)
     current_rhs = np.concatenate([assemble(f_g), F_f])
     petsc_vec.array[:] = current_rhs
 
-    # solve temperatur problem
+    bi, bj, bv = A_f.mat().getValuesCSR()
+    M_f = csr_matrix((bv, bj, bi))
+    M_coupling[dofs_g:, dofs_g:] = M_f
+    M_coupling_current = csr_matrix(M_coupling)
+    petsc_mat = PETSc.Mat().createAIJ(size=M_coupling_current.shape, 
+                    csr=(M_coupling_current.indptr,
+                         M_coupling_current.indices, 
+                         M_coupling_current.data))
+    
+    # Solve temperatur problem
     print("Start solving")
     start_time = time.time()
+    solver.setOperators(petsc_mat)
     solver.solve(petsc_vec, u_sol_petsc)
     print("Solving is done, took", time.time()- start_time)
 
@@ -299,5 +330,6 @@ while t_n < T_int[1]:
         file_g << (theta_g_old, t_n)
         file_f << (theta_f_old, t_n)
         file_press << (p_stokes, t_n)
+        file_u << (u_eff, t_n)
         save_idx = 0
     save_idx += 1

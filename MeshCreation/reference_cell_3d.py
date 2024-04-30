@@ -3,13 +3,16 @@ import numpy as np
 import sys
 
 ### Parameters:
-gamma_0 = 0.5
-point_num = 64
-mesh_size_ref = 0.05
+gamma_0 = 0.1
+point_num = 80
+mesh_size_ref = 0.02
 
 show_mesh = True
 
 ### Roughness function:
+def sin_double(x, y):
+    return 1 - (1-gamma_0)*(np.cos(2*np.pi*(y - 0.5)**2) * np.cos(2*np.pi*(x - 0.25)))**2
+
 def sin_rough(x, y):
    sin_term = np.sin(2*np.pi*x) * np.sin(2*np.pi*y)
    return np.clip(1 + (1-gamma_0)*sin_term, 0.0, 1.0)
@@ -23,7 +26,7 @@ def sin_groove_y(x, y):
    return np.clip(1 + (1-gamma_0)*sin_term, 0.0, 1.0)
 
 
-rough_fn = sin_groove_x
+rough_fn = sin_double
 
 ### Build cell
 gmsh.initialize()

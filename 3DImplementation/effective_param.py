@@ -48,7 +48,7 @@ MarkHelper(bottom_boundary).mark(bc_marker, 2)
 filev = File("Results/3DResults/cell_problem/bc_marker.pvd")
 filev << bc_marker
 
-for i in range(2):
+for i in range(0, 2):
     print("###################################################")
     print("working on direction:", i)
     if i == 0:

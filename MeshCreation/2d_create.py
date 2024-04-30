@@ -8,7 +8,7 @@ import sys
 Creates the 2D micro domains
 """
 
-name = "sin_lowres"
+name = "sin"
 
 ### Parameters:
 L, H = 1, 1
@@ -20,8 +20,8 @@ point_num = int(L/eps * 40) # for discrete interface, points per eps section
 fluid_marker = 0
 grinding_marker = 1
 
-mesh_size_max = 0.2 # 0.025
-mesh_size_min = 0.2 * eps # 0.05*eps
+mesh_size_max = 0.025
+mesh_size_min = 0.05*eps
 show_mesh = False
 save_fluid = False
 
