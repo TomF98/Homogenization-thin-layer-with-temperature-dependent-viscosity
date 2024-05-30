@@ -1,6 +1,6 @@
-==========================================================================================
+===========================================================================================================
 Implementation for the Paper: Analysis and Simulation of a Coupled Fluid-Heat System in a Thin, Rough Layer
-==========================================================================================
+===========================================================================================================
 
 This repository contains the source codes for all simulations presented in the `paper`_.
 
@@ -13,7 +13,7 @@ To run the code, the following packages are mandatory:
 
 An example environment is provided in the ``environment.yml``.
 
-.. _`paper`: ...
+.. _`paper`: https://fenicsproject.org/
 .. _`FEniCS`: https://fenicsproject.org/
 .. _`Gmsh`: https://pypi.org/project/gmsh/
 .. _`SciPy`: https://scipy.org/install/
