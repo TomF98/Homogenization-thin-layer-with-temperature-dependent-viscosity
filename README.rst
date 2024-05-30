@@ -1,6 +1,5 @@
 ==========================================================================================
-Implementation for the Paper: Analysis and Simulation of a Coupled Fluid-Heat System in a 
-Thin, Rough Layer
+Implementation for the Paper: Analysis and Simulation of a Coupled Fluid-Heat System in a Thin, Rough Layer
 ==========================================================================================
 
 This repository contains the source codes for all simulations presented in the `paper`_.
