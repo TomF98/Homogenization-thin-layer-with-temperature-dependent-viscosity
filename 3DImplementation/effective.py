@@ -236,7 +236,6 @@ for idx_f in connected_vertex:
     coupling_dofs, mass_values = mass_matrix_fluid.getrow(dof_f)
     coupling_dofs = coupling_dofs.astype(np.int32)
     #print(coupling_dofs, mass_values)
-    # check if we are at the left boundary:
     idx_g = v_to_dof_g[mapping_f_to_g[idx_f]]
     
     ## Set coupling in matrix:
