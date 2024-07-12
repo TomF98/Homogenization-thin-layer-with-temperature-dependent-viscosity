@@ -13,7 +13,7 @@ To run the code, the following packages are mandatory:
 
 An example environment is provided in the ``environment.yml``.
 
-.. _`paper`: https://fenicsproject.org/
+.. _`paper`: https://arxiv.org/abs/2406.02150
 .. _`FEniCS`: https://fenicsproject.org/
 .. _`Gmsh`: https://pypi.org/project/gmsh/
 .. _`SciPy`: https://scipy.org/install/
